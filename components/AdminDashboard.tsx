@@ -44,7 +44,7 @@ export default function AdminDashboard() {
   const fetchShiurim = async () => {
     try {
       const response = await fetch('/api/shiurim')
-      const data = await response.json()
+      const data = await response.json() as Shiur[]
       setShiurim(data)
     } catch (error) {
       console.error('Error fetching shiurim:', error)
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({}),
       })
 
-      const data = await response.json()
+      const data = await response.json() as { synced?: number; errors?: number; error?: string }
 
       if (response.ok) {
         alert(`Synced ${data.synced} shiurim. ${data.errors} errors.`)

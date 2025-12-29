@@ -25,7 +25,7 @@ export default function AdminLogin({ onSuccess }: AdminLoginProps) {
         body: JSON.stringify({ email, password }),
       })
 
-      const data = await response.json()
+      const data = await response.json() as { error?: string }
 
       if (!response.ok) {
         // Show more detailed error message

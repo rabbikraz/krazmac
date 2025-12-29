@@ -1,14 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
-import { prisma } from '@/lib/prisma'
+import { getDb } from '@/lib/db'
+import { users } from '@/lib/schema'
+import { eq } from 'drizzle-orm'
 
-export const dynamic = 'force-dynamic'
+export const runtime = 'edge'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Check if DATABASE_URL or SUPABASE_DATABASE_URL is configured
-    if (!process.env.DATABASE_URL && !process.env.SUPABASE_DATABASE_URL) {
-      console.error('DATABASE_URL or SUPABASE_DATABASE_URL is not configured')
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
       return NextResponse.json(
         { error: 'Database not configured', authenticated: false },
         { status: 500 }
@@ -17,31 +20,39 @@ export async function GET() {
 
     const cookieStore = await cookies()
     const session = cookieStore.get('admin-session')
-    
+
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.value },
-    })
+    const db = getDb(d1)
+    const user = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+      })
+      .from(users)
+      .where(eq(users.id, session.value))
+      .get()
 
     if (!user) {
       return NextResponse.json({ authenticated: false }, { status: 401 })
     }
 
-    return NextResponse.json({ authenticated: true, user: { id: user.id, email: user.email } })
+    return NextResponse.json({
+      authenticated: true,
+      user: { id: user.id, email: user.email, name: user.name }
+    })
   } catch (error: any) {
     console.error('Auth check error:', error)
-    // Return more detailed error in development
-    const errorMessage = process.env.NODE_ENV === 'development' 
-      ? error.message || 'Database connection error'
-      : 'Internal server error'
-    
+
     return NextResponse.json(
-      { error: errorMessage, authenticated: false },
+      {
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+        authenticated: false
+      },
       { status: 500 }
     )
   }
 }
-

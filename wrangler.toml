@@ -1,0 +1,13 @@
+name = "rabbi-kraz"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "rabbi-kraz-db"
+database_id = "" # Will be filled after creating D1 database
+
+# Environment variables (set via dashboard or wrangler secret)
+[vars]
+NEXT_PUBLIC_BASE_URL = "https://rabbi-kraz.pages.dev"

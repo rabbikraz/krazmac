@@ -4,33 +4,36 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
-    "postinstall": "prisma generate",
+    "build": "next build",
+    "pages:build": "@cloudflare/next-on-pages",
+    "preview": "npm run pages:build && wrangler pages dev",
+    "deploy": "npm run pages:build && wrangler pages deploy",
     "start": "next start",
     "lint": "next lint",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate deploy",
-    "db:studio": "prisma studio",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "wrangler d1 migrations apply rabbi-kraz-db",
+    "db:studio": "drizzle-kit studio",
+    "db:local": "wrangler d1 execute rabbi-kraz-db --local --command",
     "create-admin": "node scripts/create-admin.js",
     "verify-env": "node scripts/verify-env.js",
-    "verify-env:prod": "NODE_ENV=production node scripts/verify-env.js --production"
+    "cf:login": "wrangler login",
+    "cf:d1:create": "wrangler d1 create rabbi-kraz-db"
   },
   "dependencies": {
-    "@prisma/client": "^5.7.1",
+    "@cloudflare/next-on-pages": "^1.13.0",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-label": "^2.0.2",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toast": "^1.1.5",
-    "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.0.6",
+    "drizzle-orm": "^0.33.0",
     "lucide-react": "^0.309.0",
     "next": "14.0.4",
-    "next-auth": "^4.24.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.49.2",
@@ -40,16 +43,16 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
+    "@cloudflare/workers-types": "^4.20241127.0",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "autoprefixer": "^10.4.16",
+    "drizzle-kit": "^0.24.0",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.0.4",
-    "prisma": "^5.7.1",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "wrangler": "^3.80.0"
   }
 }
-

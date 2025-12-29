@@ -1,26 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { syncRSSFeed } from '@/lib/rss-parser'
 import { cookies } from 'next/headers'
-import { prisma } from '@/lib/prisma'
+import { getDb } from '@/lib/db'
+import { users } from '@/lib/schema'
+import { eq } from 'drizzle-orm'
 
-async function isAuthenticated() {
+export const runtime = 'edge'
+
+async function isAuthenticated(d1: D1Database) {
   const cookieStore = await cookies()
   const session = cookieStore.get('admin-session')
   if (!session) return false
-  
-  const user = await prisma.user.findUnique({
-    where: { id: session.value },
-  })
+
+  const db = getDb(d1)
+  const user = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.value))
+    .get()
+
   return !!user
 }
 
+
 export async function POST(request: NextRequest) {
   try {
-    if (!(await isAuthenticated())) {
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
+    if (!(await isAuthenticated(d1))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { feedUrl } = await request.json()
+    const body = await request.json() as { feedUrl?: string }
+    const { feedUrl } = body
     const url = feedUrl || process.env.RSS_FEED_URL
 
     if (!url) {
@@ -30,7 +50,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const result = await syncRSSFeed(url)
+    const result = await syncRSSFeed(d1, url)
 
     return NextResponse.json({
       success: true,

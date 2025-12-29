@@ -1,7 +1,6 @@
-import Parser from 'rss-parser'
-import { prisma } from './prisma'
-
-const parser = new Parser()
+import { getDb } from './db'
+import { shiurim } from './schema'
+import { eq } from 'drizzle-orm'
 
 export interface RSSItem {
   guid: string
@@ -13,67 +12,118 @@ export interface RSSItem {
   link?: string
 }
 
+/**
+ * Edge-compatible RSS feed parser using fetch API
+ * Replaces rss-parser which has Node.js dependencies
+ */
 export async function fetchRSSFeed(feedUrl: string): Promise<RSSItem[]> {
   try {
-    const feed = await parser.parseURL(feedUrl)
-    
-    if (!feed.items) {
-      return []
+    const response = await fetch(feedUrl)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch RSS feed: ${response.statusText}`)
     }
 
-    return feed.items.map((item) => {
-      const enclosure = item.enclosure
-      const audioUrl = enclosure?.url || item.link || ''
-      
-      // Extract duration from itunes:duration or content
-      let duration = item.itunes?.duration || ''
-      
-      return {
-        guid: item.guid || item.id || item.link || '',
-        title: item.title || '',
-        description: item.contentSnippet || item.content || item.description || '',
-        audioUrl,
-        pubDate: item.pubDate || item.isoDate || new Date().toISOString(),
-        duration,
-        link: item.link || '',
+    const xmlText = await response.text()
+
+    // Simple XML parsing for RSS feeds
+    const items: RSSItem[] = []
+
+    // Match all <item> tags
+    const itemRegex = /<item>([\s\S]*?)<\/item>/gi
+    let match
+
+    while ((match = itemRegex.exec(xmlText)) !== null) {
+      const itemXML = match[1]
+
+      // Extract fields from each item
+      const getTag = (tag: string): string => {
+        const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i')
+        const match = itemXML.match(regex)
+        if (!match) return ''
+
+        // Decode HTML entities and strip CDATA
+        let content = match[1]
+          .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+
+        return content.trim()
       }
-    })
+
+      // Get enclosure URL for audio
+      const enclosureMatch = itemXML.match(/<enclosure[^>]+url="([^"]+)"/i)
+      const audioUrl = enclosureMatch ? enclosureMatch[1] : getTag('link')
+
+      // Get iTunes duration
+      const durationMatch = itemXML.match(/<itunes:duration[^>]*>([^<]+)<\/itunes:duration>/i)
+      const duration = durationMatch ? durationMatch[1] : ''
+
+      const item: RSSItem = {
+        guid: getTag('guid') || getTag('link'),
+        title: getTag('title'),
+        description: getTag('description') || getTag('content:encoded'),
+        audioUrl: audioUrl,
+        pubDate: getTag('pubDate'),
+        duration: duration,
+        link: getTag('link'),
+      }
+
+      // Only add valid items
+      if (item.guid && item.title) {
+        items.push(item)
+      }
+    }
+
+    return items
   } catch (error) {
     console.error('Error fetching RSS feed:', error)
     throw error
   }
 }
 
-export async function syncRSSFeed(feedUrl: string) {
+/**
+ * Sync RSS feed items to D1 database
+ */
+export async function syncRSSFeed(d1: D1Database, feedUrl: string) {
   const items = await fetchRSSFeed(feedUrl)
+  const db = getDb(d1)
   const synced: string[] = []
   const errors: string[] = []
 
   for (const item of items) {
     try {
       // Check if shiur already exists
-      const existing = await prisma.shiur.findUnique({
-        where: { guid: item.guid },
-      })
+      const existing = await db
+        .select()
+        .from(shiurim)
+        .where(eq(shiurim.guid, item.guid))
+        .get()
 
       if (existing) {
         // Update existing shiur
-        await prisma.shiur.update({
-          where: { guid: item.guid },
-          data: {
+        await db
+          .update(shiurim)
+          .set({
             title: item.title,
             description: item.description,
             audioUrl: item.audioUrl,
             pubDate: new Date(item.pubDate),
             duration: item.duration,
             link: item.link,
-          },
-        })
+            updatedAt: new Date(),
+          })
+          .where(eq(shiurim.guid, item.guid))
+          .execute()
+
         synced.push(item.guid)
       } else {
         // Create new shiur
-        await prisma.shiur.create({
-          data: {
+        await db
+          .insert(shiurim)
+          .values({
             guid: item.guid,
             title: item.title,
             description: item.description,
@@ -81,8 +131,9 @@ export async function syncRSSFeed(feedUrl: string) {
             pubDate: new Date(item.pubDate),
             duration: item.duration,
             link: item.link,
-          },
-        })
+          })
+          .execute()
+
         synced.push(item.guid)
       }
     } catch (error) {
@@ -93,4 +144,3 @@ export async function syncRSSFeed(feedUrl: string) {
 
   return { synced, errors, total: items.length }
 }
-

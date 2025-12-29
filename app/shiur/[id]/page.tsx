@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { prisma } from '@/lib/prisma'
 import { formatDate, formatDuration, extractYouTubeVideoId, getYouTubeThumbnail } from '@/lib/utils'
 import Header from '@/components/Header'
 import ShiurAudioPlayer from '@/components/ShiurAudioPlayer'
@@ -11,19 +10,20 @@ import SourceSheetViewer from '@/components/SourceSheetViewer'
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
+export const runtime = 'edge'
 
 async function getShiur(id: string) {
   try {
-    // Check if DATABASE_URL is available
-    if (!process.env.DATABASE_URL) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const res = await fetch(`${baseUrl}/api/shiurim/${id}`, {
+      next: { revalidate: 60 },
+    })
+
+    if (!res.ok) {
       return null
     }
-    return await prisma.shiur.findUnique({
-      where: { id },
-      include: {
-        platformLinks: true,
-      },
-    })
+
+    return await res.json() as any
   } catch (error) {
     console.error('Error fetching shiur:', error)
     return null
@@ -32,7 +32,7 @@ async function getShiur(id: string) {
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const shiur = await getShiur(params.id)
-  
+
   if (!shiur) {
     return {
       title: 'Shiur Not Found',
@@ -87,10 +87,10 @@ export default async function ShiurPage({ params }: { params: { id: string } }) 
       .replace(/<div[^>]*>/gi, '')
       .replace(/<\/li>/gi, '\n')
       .replace(/<li[^>]*>/gi, '• ')
-    
+
     // Strip remaining HTML tags
     text = text.replace(/<[^>]*>/g, '')
-    
+
     // Decode HTML entities
     text = text
       .replace(/&nbsp;/g, ' ')
@@ -99,7 +99,7 @@ export default async function ShiurPage({ params }: { params: { id: string } }) 
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
-    
+
     // Split into lines and clean up
     return text
       .split('\n')

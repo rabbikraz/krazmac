@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+export const runtime = 'edge'
+
 const YOUTUBE_CHANNEL_ID = 'UCMrMvXraTLhAtpb0JZQOKhQ'
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
 
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
       throw new Error('Failed to fetch channel data')
     }
 
-    const channelData = await channelResponse.json()
+    const channelData = await channelResponse.json() as any
     const uploadsPlaylistId = channelData.items[0]?.contentDetails?.relatedPlaylists?.uploads
 
     if (!uploadsPlaylistId) {
@@ -38,7 +40,7 @@ export async function GET(request: Request) {
 
     // Get videos from the uploads playlist
     let videosUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
-    
+
     if (pageToken) {
       videosUrl += `&pageToken=${pageToken}`
     }
@@ -49,11 +51,11 @@ export async function GET(request: Request) {
       throw new Error('Failed to fetch videos')
     }
 
-    const videosData = await videosResponse.json()
+    const videosData = await videosResponse.json() as any
 
     // Get detailed video information including duration
     const videoIds = videosData.items.map((item: any) => item.contentDetails.videoId).join(',')
-    
+
     const videoDetailsResponse = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoIds}&key=${YOUTUBE_API_KEY}`
     )
@@ -62,21 +64,21 @@ export async function GET(request: Request) {
       throw new Error('Failed to fetch video details')
     }
 
-    const videoDetailsData = await videoDetailsResponse.json()
+    const videoDetailsData = await videoDetailsResponse.json() as any
 
     // Filter out shorts (videos under 60 seconds or with #shorts in title)
     const videos = videoDetailsData.items
       .filter((video: any) => {
         const duration = video.contentDetails.duration
         const title = video.snippet.title.toLowerCase()
-        
+
         // Parse duration (format: PT1M30S = 1 minute 30 seconds)
         const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
         const hours = parseInt(match[1] || '0')
         const minutes = parseInt(match[2] || '0')
         const seconds = parseInt(match[3] || '0')
         const totalSeconds = hours * 3600 + minutes * 60 + seconds
-        
+
         // Exclude shorts: less than 60 seconds OR has #shorts in title
         return totalSeconds >= 60 && !title.includes('#shorts') && !title.includes('shorts')
       })
@@ -86,7 +88,7 @@ export async function GET(request: Request) {
         const hours = parseInt(match[1] || '0')
         const minutes = parseInt(match[2] || '0')
         const seconds = parseInt(match[3] || '0')
-        
+
         let durationStr = ''
         if (hours > 0) {
           durationStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`

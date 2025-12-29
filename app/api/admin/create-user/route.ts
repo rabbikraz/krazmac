@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser } from '@/lib/auth'
 
-export const dynamic = 'force-dynamic'
+export const runtime = 'edge'
 
 /**
  * One-time admin user creation endpoint
  * Protected by ADMIN_SETUP_TOKEN environment variable
- * 
- * Usage: POST /api/admin/create-user
- * Headers: { "X-Setup-Token": "your-admin-setup-token" }
- * Body: { "email": "admin@example.com", "password": "secure-password", "name": "Admin" }
- * 
- * After creating your admin user, you can remove this endpoint or disable it
- * by removing the ADMIN_SETUP_TOKEN from your environment variables.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -34,15 +27,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if DATABASE_URL is configured
-    if (!process.env.DATABASE_URL && !process.env.SUPABASE_DATABASE_URL) {
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
       return NextResponse.json(
         { error: 'Database not configured' },
         { status: 500 }
       )
     }
 
-    const { email, password, name } = await request.json()
+    const body = await request.json() as { email: string; password: string; name?: string }
+    const { email, password, name } = body
 
     if (!email || !password) {
       return NextResponse.json(
@@ -52,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the admin user
-    const user = await createUser(email, password, name || 'Admin')
+    const user = await createUser(d1, email, password, name || 'Admin')
 
     return NextResponse.json({
       success: true,
@@ -61,9 +57,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Create admin user error:', error)
-    
-    // Handle unique constraint violation (user already exists)
-    if (error.code === 'P2002') {
+
+    // Handle unique constraint violation
+    if (error.message?.includes('UNIQUE constraint failed')) {
       return NextResponse.json(
         { error: 'User with this email already exists' },
         { status: 409 }
@@ -71,9 +67,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: 'Failed to create admin user', details: process.env.NODE_ENV === 'development' ? error.message : undefined },
+      {
+        error: 'Failed to create admin user',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     )
   }
 }
-

@@ -92,7 +92,7 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
         body: JSON.stringify(payload),
       })
 
-      const data = await response.json()
+      const data = await response.json() as { error?: string }
 
       if (!response.ok) {
         setError(data.error || 'Error saving shiur')

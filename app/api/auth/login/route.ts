@@ -2,20 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyUser } from '@/lib/auth'
 import { cookies } from 'next/headers'
 
-export const dynamic = 'force-dynamic'
+export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   try {
-    // Check if DATABASE_URL or SUPABASE_DATABASE_URL is configured
-    if (!process.env.DATABASE_URL && !process.env.SUPABASE_DATABASE_URL) {
-      console.error('DATABASE_URL or SUPABASE_DATABASE_URL is not configured')
+    // Get D1 database from the request context (Cloudflare Workers)
+    // @ts-ignore - Cloudflare Workers types
+    const db: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!db) {
+      console.error('D1 database not available')
       return NextResponse.json(
-        { error: 'Database not configured. Please check your environment variables.' },
+        { error: 'Database not configured.' },
         { status: 500 }
       )
     }
 
-    const { email, password } = await request.json()
+    const body = await request.json() as { email: string; password: string }
+    const { email, password } = body
 
     if (!email || !password) {
       return NextResponse.json(
@@ -24,7 +28,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const user = await verifyUser(email, password)
+    const user = await verifyUser(db, email, password)
 
     if (!user) {
       return NextResponse.json(
@@ -33,33 +37,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Set a simple session cookie (in production, use proper session management)
+    // Set a simple session cookie
     const cookieStore = await cookies()
     cookieStore.set('admin-session', user.id, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true, // Always secure in Workers
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
     })
 
-    return NextResponse.json({ success: true, user: { id: user.id, email: user.email } })
+    return NextResponse.json({
+      success: true,
+      user: { id: user.id, email: user.email, name: user.name }
+    })
   } catch (error: any) {
     console.error('Login error:', error)
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      meta: error.meta,
-      DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
-      SUPABASE_DATABASE_URL: process.env.SUPABASE_DATABASE_URL ? 'SET' : 'NOT SET',
-    })
-    
-    // Return detailed error for debugging
-    const errorMessage = error.message || 'Database connection error'
-    
+
     return NextResponse.json(
-      { 
-        error: 'Internal server error. Please check your database connection.',
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      {
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     )
@@ -71,4 +68,3 @@ export async function DELETE() {
   cookieStore.delete('admin-session')
   return NextResponse.json({ success: true })
 }
-

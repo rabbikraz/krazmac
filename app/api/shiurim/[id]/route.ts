@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getDb } from '@/lib/db'
+import { shiurim, platformLinks, users } from '@/lib/schema'
 import { cookies } from 'next/headers'
+import { eq } from 'drizzle-orm'
 
-async function isAuthenticated() {
+export const runtime = 'edge'
+
+async function isAuthenticated(d1: D1Database) {
   const cookieStore = await cookies()
   const session = cookieStore.get('admin-session')
   if (!session) return false
-  
-  const user = await prisma.user.findUnique({
-    where: { id: session.value },
-  })
+
+  const db = getDb(d1)
+  const user = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.value))
+    .get()
+
   return !!user
 }
 
@@ -18,18 +26,39 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const shiur = await prisma.shiur.findUnique({
-      where: { id: params.id },
-      include: {
-        platformLinks: true,
-      },
-    })
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
+    const db = getDb(d1)
+
+    const shiur = await db
+      .select()
+      .from(shiurim)
+      .where(eq(shiurim.id, params.id))
+      .get()
 
     if (!shiur) {
       return NextResponse.json({ error: 'Shiur not found' }, { status: 404 })
     }
 
-    return NextResponse.json(shiur)
+    // Fetch platform links
+    const links = await db
+      .select()
+      .from(platformLinks)
+      .where(eq(platformLinks.shiurId, params.id))
+      .get()
+
+    return NextResponse.json({
+      ...shiur,
+      platformLinks: links || null,
+    })
   } catch (error) {
     console.error('Error fetching shiur:', error)
     return NextResponse.json(
@@ -44,50 +73,93 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    if (!(await isAuthenticated())) {
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
+    if (!(await isAuthenticated(d1))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const data = await request.json()
-    
+    const body = await request.json() as {
+      title?: string
+      description?: string
+      blurb?: string
+      audioUrl?: string
+      sourceDoc?: string
+      pubDate?: string
+      duration?: string
+      link?: string
+      platformLinks?: any
+    }
+    const data = body
+
+    const db = getDb(d1)
+
     // Update shiur
-    const shiur = await prisma.shiur.update({
-      where: { id: params.id },
-      data: {
-        title: data.title,
-        description: data.description,
-        blurb: data.blurb,
-        audioUrl: data.audioUrl,
-        sourceDoc: data.sourceDoc,
-        pubDate: data.pubDate ? new Date(data.pubDate) : undefined,
-        duration: data.duration,
-        link: data.link,
-      },
-      include: {
-        platformLinks: true,
-      },
-    })
+    const updateData: any = {}
+    if (data.title !== undefined) updateData.title = data.title
+    if (data.description !== undefined) updateData.description = data.description
+    if (data.blurb !== undefined) updateData.blurb = data.blurb
+    if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl
+    if (data.sourceDoc !== undefined) updateData.sourceDoc = data.sourceDoc
+    if (data.pubDate !== undefined) updateData.pubDate = new Date(data.pubDate)
+    if (data.duration !== undefined) updateData.duration = data.duration
+    if (data.link !== undefined) updateData.link = data.link
+    updateData.updatedAt = new Date()
+
+    const updatedShiur = await db
+      .update(shiurim)
+      .set(updateData)
+      .where(eq(shiurim.id, params.id))
+      .returning()
+      .get()
 
     // Update or create platform links
     if (data.platformLinks) {
-      await prisma.platformLinks.upsert({
-        where: { shiurId: params.id },
-        create: {
-          shiurId: params.id,
-          ...data.platformLinks,
-        },
-        update: data.platformLinks,
-      })
+      const existingLinks = await db
+        .select()
+        .from(platformLinks)
+        .where(eq(platformLinks.shiurId, params.id))
+        .get()
+
+      if (existingLinks) {
+        await db
+          .update(platformLinks)
+          .set({
+            ...data.platformLinks,
+            updatedAt: new Date(),
+          })
+          .where(eq(platformLinks.shiurId, params.id))
+          .execute()
+      } else {
+        await db
+          .insert(platformLinks)
+          .values({
+            shiurId: params.id,
+            ...data.platformLinks,
+          })
+          .execute()
+      }
     }
 
-    const updatedShiur = await prisma.shiur.findUnique({
-      where: { id: params.id },
-      include: {
-        platformLinks: true,
-      },
-    })
+    // Fetch the updated shiur with links
+    const links = await db
+      .select()
+      .from(platformLinks)
+      .where(eq(platformLinks.shiurId, params.id))
+      .get()
 
-    return NextResponse.json(updatedShiur)
+    return NextResponse.json({
+      ...updatedShiur,
+      platformLinks: links || null,
+    })
   } catch (error) {
     console.error('Error updating shiur:', error)
     return NextResponse.json(
@@ -102,13 +174,23 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    if (!(await isAuthenticated())) {
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
+    if (!(await isAuthenticated(d1))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    await prisma.shiur.delete({
-      where: { id: params.id },
-    })
+    const db = getDb(d1)
+
+    await db.delete(shiurim).where(eq(shiurim.id, params.id)).execute()
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -119,4 +201,3 @@ export async function DELETE(
     )
   }
 }
-

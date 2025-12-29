@@ -22,7 +22,7 @@ export default function AdminPage() {
       } else {
         // If it's a 500 error, there's a database issue
         if (response.status === 500) {
-          const data = await response.json().catch(() => ({}))
+          const data = await response.json().catch(() => ({})) as { error?: string }
           console.error('Database error:', data.error)
         }
       }

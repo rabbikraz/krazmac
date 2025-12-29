@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { prisma } from '@/lib/prisma'
 import { formatDate, formatDuration } from '@/lib/utils'
 import Header from '@/components/Header'
 import PlayButton from '@/components/PlayButton'
@@ -9,20 +8,23 @@ import { Calendar, Clock, Info } from 'lucide-react'
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
 export const revalidate = 60 // Revalidate every 60 seconds
+export const runtime = 'edge'
 
 async function getLatestShiurim() {
   try {
-    // Check if DATABASE_URL is available
-    if (!process.env.DATABASE_URL) {
+    // Fetch from internal API route
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const res = await fetch(`${baseUrl}/api/shiurim`, {
+      next: { revalidate: 60 },
+    })
+
+    if (!res.ok) {
+      console.error('Failed to fetch shiurim:', res.statusText)
       return []
     }
-    return await prisma.shiur.findMany({
-      take: 9,
-      orderBy: { pubDate: 'desc' },
-      include: {
-        platformLinks: true,
-      },
-    })
+
+    const shiurim = await res.json() as any[]
+    return shiurim.slice(0, 9) // Take latest 9
   } catch (error) {
     console.error('Error fetching shiurim:', error)
     return []
@@ -53,7 +55,7 @@ export default async function Home() {
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {shiurim.map((shiur) => (
+            {shiurim.map((shiur: any) => (
               <div
                 key={shiur.id}
                 className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100 overflow-hidden flex flex-col h-full group"

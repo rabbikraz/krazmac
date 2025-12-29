@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+export const runtime = 'edge'
+
 const YOUTUBE_CHANNEL_ID = 'UCMrMvXraTLhAtpb0JZQOKhQ'
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
 
@@ -23,7 +25,7 @@ export async function GET() {
       throw new Error(`Failed to fetch playlists: ${playlistsResponse.status}`)
     }
 
-    const playlistsData = await playlistsResponse.json()
+    const playlistsData = await playlistsResponse.json() as any
 
     if (!playlistsData.items || playlistsData.items.length === 0) {
       return NextResponse.json([])

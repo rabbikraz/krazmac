@@ -25,7 +25,7 @@ async function getVideos() {
       return []
     }
 
-    const channelData = await channelResponse.json()
+    const channelData = await channelResponse.json() as any
     const uploadsPlaylistId = channelData.items[0]?.contentDetails?.relatedPlaylists?.uploads
 
     if (!uploadsPlaylistId) {
@@ -35,20 +35,20 @@ async function getVideos() {
     // Fetch all videos using pagination
     let allVideoIds: string[] = []
     let nextPageToken: string | undefined = undefined
-    
+
     do {
       let playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50&key=${YOUTUBE_API_KEY}`
       if (nextPageToken) {
         playlistUrl += `&pageToken=${nextPageToken}`
       }
-      
+
       const videosResponse = await fetch(playlistUrl, { next: { revalidate: 3600 } })
-      
+
       if (!videosResponse.ok) {
         break
       }
-      
-      const videosData = await videosResponse.json()
+
+      const videosData = await videosResponse.json() as any
       const pageVideoIds = videosData.items.map((item: any) => item.contentDetails.videoId)
       allVideoIds = allVideoIds.concat(pageVideoIds)
       nextPageToken = videosData.nextPageToken
@@ -70,7 +70,7 @@ async function getVideos() {
         continue
       }
 
-      const videoDetailsData = await videoDetailsResponse.json()
+      const videoDetailsData = await videoDetailsResponse.json() as any
       allVideos.push(...videoDetailsData.items)
     }
 
@@ -83,7 +83,7 @@ async function getVideos() {
         const minutes = parseInt(match[2] || '0')
         const seconds = parseInt(match[3] || '0')
         const totalSeconds = hours * 3600 + minutes * 60 + seconds
-        
+
         let durationStr = ''
         if (hours > 0) {
           durationStr = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
@@ -93,7 +93,7 @@ async function getVideos() {
 
         // Shorts are videos shorter than 3 minutes (180 seconds)
         const isShort = totalSeconds < 180
-        
+
         return {
           id: video.id,
           title: video.snippet.title,

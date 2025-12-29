@@ -1,27 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getDb } from '@/lib/db'
+import { shiurim, platformLinks, users } from '@/lib/schema'
 import { cookies } from 'next/headers'
+import { eq } from 'drizzle-orm'
+import { desc } from 'drizzle-orm'
 
-async function isAuthenticated() {
+export const runtime = 'edge'
+
+async function isAuthenticated(d1: D1Database) {
   const cookieStore = await cookies()
   const session = cookieStore.get('admin-session')
   if (!session) return false
-  
-  const user = await prisma.user.findUnique({
-    where: { id: session.value },
-  })
+
+  const db = getDb(d1)
+  const user = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.value))
+    .get()
+
   return !!user
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const shiurim = await prisma.shiur.findMany({
-      orderBy: { pubDate: 'desc' },
-      include: {
-        platformLinks: true,
-      },
-    })
-    return NextResponse.json(shiurim)
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
+    const db = getDb(d1)
+
+    // Fetch all shiurim with their platform links
+    const allShiurim = await db
+      .select()
+      .from(shiurim)
+      .orderBy(desc(shiurim.pubDate))
+      .all()
+
+    // Fetch platform links separately
+    const shiurimWithLinks = await Promise.all(
+      allShiurim.map(async (shiur) => {
+        const links = await db
+          .select()
+          .from(platformLinks)
+          .where(eq(platformLinks.shiurId, shiur.id))
+          .get()
+
+        return {
+          ...shiur,
+          platformLinks: links || null,
+        }
+      })
+    )
+
+    return NextResponse.json(shiurimWithLinks)
   } catch (error) {
     console.error('Error fetching shiurim:', error)
     return NextResponse.json(
@@ -33,13 +71,40 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    if (!(await isAuthenticated())) {
+    // @ts-ignore - Cloudflare Workers types
+    const d1: D1Database = request.env?.DB || (globalThis as any).DB
+
+    if (!d1) {
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 500 }
+      )
+    }
+
+    if (!(await isAuthenticated(d1))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const data = await request.json()
-    const shiur = await prisma.shiur.create({
-      data: {
+    const body = await request.json() as {
+      guid: string
+      title: string
+      description?: string
+      blurb?: string
+      audioUrl: string
+      sourceDoc?: string
+      pubDate: string
+      duration?: string
+      link?: string
+      platformLinks?: any
+    }
+    const data = body
+
+    const db = getDb(d1)
+
+    // Create the shiur
+    const newShiur = await db
+      .insert(shiurim)
+      .values({
         guid: data.guid,
         title: data.title,
         description: data.description,
@@ -49,18 +114,27 @@ export async function POST(request: NextRequest) {
         pubDate: new Date(data.pubDate),
         duration: data.duration,
         link: data.link,
-        platformLinks: data.platformLinks
-          ? {
-              create: data.platformLinks,
-            }
-          : undefined,
-      },
-      include: {
-        platformLinks: true,
-      },
-    })
+      })
+      .returning()
+      .get()
 
-    return NextResponse.json(shiur)
+    // Create platform links if provided
+    let links = null
+    if (data.platformLinks) {
+      links = await db
+        .insert(platformLinks)
+        .values({
+          shiurId: newShiur.id,
+          ...data.platformLinks,
+        })
+        .returning()
+        .get()
+    }
+
+    return NextResponse.json({
+      ...newShiur,
+      platformLinks: links,
+    })
   } catch (error) {
     console.error('Error creating shiur:', error)
     return NextResponse.json(

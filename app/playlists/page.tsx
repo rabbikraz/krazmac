@@ -40,7 +40,7 @@ async function getPlaylists() {
       return []
     }
 
-    const playlistsData = await playlistsResponse.json()
+    const playlistsData = await playlistsResponse.json() as any
 
     if (!playlistsData.items || playlistsData.items.length === 0) {
       return []
