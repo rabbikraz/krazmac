@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html class="h-full" lang="en" dir="ltr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>404 - Not Found</title>
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="icon" href="/favicon.ico">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#ffb84a">
+<meta name="msapplication-TileColor" content="#000000">
+<meta name="theme-color" content="#ffffff">
+<meta property="og:site_name" content="24Six"/>
+<meta property="og:type" content="website"/>
+<meta name="csrf-token" content="">
+    <meta property="og:title" content="404 - Not Found"/>
+    <meta property="og:url" content="https://24six.app/assets/images/logo/logo.png"/>
+
+    
+    
+            <link rel="image_src" href="/assets/img/banner/banner-desktop-2.jpg"/>
+        <meta property="og:image" content="/assets/img/banner/banner-desktop-2.jpg"/>
+        <meta property="og:image:width" content="1920"/>
+        <meta property="og:image:height" content="1080"/>
+    
+    
+    
+    
+    <meta name="twitter:card" content="summary_large_image"/>
+    <!--meta name="twitter:site" content="@"-->
+    <meta name="twitter:title" content="404 - Not Found"/>
+    <meta name="twitter:image" content="/img/social-share.jpg"/>
+    <meta name="twitter:description" content=""/>
+
+        <link rel="preload" as="style" href="https://24six.app/build/assets/frontend-BSNLxqgt.css" /><link rel="preload" as="style" href="https://24six.app/build/assets/tailwind-DUdw5G79.css" /><link rel="preload" as="style" href="https://24six.app/build/assets/app-B6RKnCYX.css" /><link rel="preload" as="style" href="https://24six.app/build/assets/svg-icons-D9Afnxw3.css" /><link rel="stylesheet" href="https://24six.app/build/assets/frontend-BSNLxqgt.css" data-navigate-track="reload" /><link rel="stylesheet" href="https://24six.app/build/assets/tailwind-DUdw5G79.css" data-navigate-track="reload" /><link rel="stylesheet" href="https://24six.app/build/assets/app-B6RKnCYX.css" data-navigate-track="reload" /><link rel="stylesheet" href="https://24six.app/build/assets/svg-icons-D9Afnxw3.css" data-navigate-track="reload" />        <script async src="https://www.googletagmanager.com/gtag/js?id=G-S7CWP81L78"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-S7CWP81L78');
+</script>
+</head>
+<body lang="en" class="w-full bg-neutral-950 text-white antialiased font-sans font-normal">
+
+<div id="body-wrapper" class="w-full h-full flex flex-col md:pt-16 lg:pt-20">
+
+    
+            <div class="w-full border-b bg-neutral-950 border-gray-600 fixed left-safe-l right-safe-r h-14 md:h-16 lg:h-20 duration-500 transition-colors top-safe-t z-30">
+
+    <div class="absolute inset-0 w-full h-14 md:h-16 lg:h-20">
+        <div class="xl:max-w-screen-xl lg:max-w-screen-lg md:max-w-screen-md max-w-screen mx-auto flex px-5 xl:px-0 h-14 md:h-16 lg:h-20">
+
+            <a href="/" class="lg:min-w-32 lg:flex-1 flex justify-center items-center">
+                <img src="https://24six.app/images/logo-horiz-yellow.svg" alt="LOGO" />
+            </a>
+
+            <div class="wrapper flex justify-end md:justify-normal md:w-full gap-x-4 md:gap-x-0 flex-1 md:flex-auto px-3 lg:px-0">
+
+                <div class="hidden ltr:pl-8 rtl:pr-8 md:flex items-center md:flex-1 ">
+                    <div>
+                        <ul class="hidden lg:flex gap-x-12 text-white transition-colors">
+                            <li>
+                                <a href="/features.html" class="hover:text-accent capitalize">Features</a>
+                            </li>
+                            <li>
+                                <a href="/plans.html" class="hover:text-accent capitalize">Plans</a>
+                            </li>
+                            <li>
+                                <a href="/support.html" class="hover:text-accent capitalize">Support</a>
+                            </li>
+                            <li>
+                                <a href="https://shop.24six.app/" target="_blank" class="hover:text-accent capitalize">24Six devices</a>
+                            </li>
+                            <li>
+                                <a href="/home-artists.html" class="hover:text-accent capitalize">For Artists</a>
+                            </li>
+                            <li>
+                                <a href="/talent" class="hover:text-accent capitalize">
+                                    24Six Talent Show
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="lg:flex-none flex gap-x-3 justify-end items-center lg:pr-12">
+
+                                            <a
+                            href="/login"
+                            class="hidden md:flex items-center justify-center gap-x-2 text-black w-full px-6 py-2 rounded-lg bg-accent hover:bg-accent-light md:bg-accent transition-colors"
+                        >
+                            <span class="truncate">Log in</span>
+                        </a>
+                        <a
+                            href="/register.html"
+                            class="flex-center gap-x-2 text-black w-full px-6 py-2 rounded-lg bg-accent hover:bg-accent-light md:bg-neutral-200 md:hover:bg-neutral-100 transition-colors"
+                        >
+                            <span class="truncate capitalize">Sign up</span>
+                        </a>
+                                    </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+        <div class="h-14 md:hidden opacity-0 pointer-events-none"></div>
+    
+    <div class="w-full xl:max-w-screen-xl lg:max-w-screen-lg md:max-w-screen-md max-w-screen mx-auto flex-1">
+
+        <div
+            ref="wrapper"
+            id="wrapper"
+            class="w-full mx-auto wrapper h-full min-full-height-no-nav flex flex-col"
+        >
+                            <div class="text-center px-3 md:px-0 h-full flex-1 flex flex-col items-center justify-center gap-y-5 md:gap-y-8">
+                    <div class="text-accent">
+                        <i  class="fa fa-regular fa-4x"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><path d="M545 0c17.1 0 31 13.9 31 31l0 112.5c0 .4 0 .7 0 1.1L576 368c0 16.7-6.2 32.2-16.7 45.1l71.5 56c10.4 8.2 12.3 23.3 4.1 33.7s-23.3 12.3-33.7 4.1L9.2 42.9C-1.2 34.7-3.1 19.6 5.1 9.2S28.4-3.1 38.8 5.1L208 137.7l0-17.7c0-10.5 6.9-19.8 16.9-22.9l311-95.7c3-.9 6-1.4 9.1-1.4zM256 175.3l31.7 24.9L528 126.3 528 54 256 137.7l0 37.6zm77.7 60.9l87.4 68.5C437.4 294.3 457.8 288 480 288c17.5 0 33.9 3.9 48 10.7l0-122.2L333.7 236.3zM463.4 337.9l58 45.4c4.6-5.6 6.6-11.4 6.6-15.3c0-9.8-12.9-32-48-32c-6.2 0-11.7 .7-16.6 1.9zM208 259.9l48 37.8L256 432c0 44.2-43 80-96 80s-96-35.8-96-80s43-80 96-80c17.5 0 33.9 3.9 48 10.7l0-102.8zM160 400c-35.1 0-48 22.2-48 32s12.9 32 48 32s48-22.2 48-32s-12.9-32-48-32z"/></svg></i>                    </div>
+
+                                            <h1 class="text-white text-3xl md:text-4xl lg:text-5xl font-semibold">404 - Not Found</h1>
+                    
+                                            <h2 class="text-xl md:text-2xl">Sorry, the page you were looking for could not be found.</h2>
+                    
+                                        <div class="text-left">
+                        <h3 class="pb-2">Here are some things that may help:</h3>
+                        <ul class="list-disc list-inside">
+                                                            <li><a href="/login" class="text-accent hover:underline">Login to your 24Six Account</a> and try again.</li>
+                                                                                                                             <li>Check the URL and make sure that it is spelled correctly.</li>                                                                                                                                                         </ul>
+                    </div>
+                    
+
+                                            <code class="font-mono text-sm text-gray-600 italic  ">
+                            <small class="leading-tight max-w-md block break-words">eyJpdiI6InJmNXlNU3NMOXZjNUtYN3hEVCtSRkE9PSIsInZhbHVlIjoiNC9vTnBKYzdmVDB2WGVuS3JSU0k4NjN5eWdFelFnNXdtKzhVQ1Ryc0J6eGdKQXZoMXRGUW1TYmdJaDhqeDNIbm9PQzdaZUljeGp2dmFIbnNjdFZuNVE9PSIsIm1hYyI6ImExYzllZmE0ZDc2NjU1MDhlNjNhOGI3MjQyMGI5Y2YwOTRjZDNlY2RlNzJkODQ3NjZmMDUxZTYyODY4NzNjZjUiLCJ0YWciOiIifQ==</small>
+                        </code>
+                                    </div>
+                    </div>
+
+    </div>
+
+</div>
+
+<script>
+    
+    if( top &&
+        document !== top.document &&
+        document.location.origin === top.document.location.origin &&
+        top.document.location.pathname.startsWith('/app')
+    ){
+        const navWrapper = document.getElementById('nav-wrapper');
+        if(navWrapper){
+            navWrapper.classList.add('hidden');
+            const closeBtn = document.getElementById('close-error-button');
+            closeBtn.classList.remove('hidden');
+            closeBtn.addEventListener('click', e => {
+                top.document.location.href = document.location.href;
+            });
+        }
+    }
+</script>
+</body>
+</html>

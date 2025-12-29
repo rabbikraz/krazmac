@@ -1,0 +1,54 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password      String
+  name          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Shiur {
+  id            String   @id @default(cuid())
+  guid          String   @unique
+  title         String
+  description   String?
+  blurb         String?
+  audioUrl      String
+  sourceDoc     String?
+  pubDate       DateTime
+  duration      String?
+  link          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  platformLinks PlatformLinks?
+}
+
+model PlatformLinks {
+  id          String   @id @default(cuid())
+  shiurId     String   @unique
+  shiur       Shiur    @relation(fields: [shiurId], references: [id], onDelete: Cascade)
+  youtube     String?
+  youtubeMusic String?
+  spotify     String?
+  apple       String?
+  amazon      String?
+  pocket      String?
+  twentyFourSix String?
+  castbox     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
