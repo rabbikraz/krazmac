@@ -158,7 +158,7 @@ export default async function VideosPage({
         ) : (
           <div className="space-y-8">
             {/* Full Videos Section */}
-            <details className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden" open>
+            <details className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <summary className="flex items-center justify-between p-6 cursor-pointer bg-white hover:bg-gray-50 transition-colors list-none select-none">
                 <span className="font-serif text-2xl font-semibold text-primary">
                   Full Shiurim ({shiurim.length})
