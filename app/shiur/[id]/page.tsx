@@ -109,7 +109,7 @@ export default async function ShiurPage({ params }: { params: Promise<{ id: stri
           <nav className="flex items-center gap-3 md:gap-6 text-xs md:text-sm">
             <Link href="/" className="hover:text-blue-200 transition-colors">Home</Link>
             <Link href="/archive" className="hover:text-blue-200 transition-colors">Archive</Link>
-            <Link href="/playlists" className="hover:text-blue-200 transition-colors">Playlists</Link>
+            <Link href="/sponsor" className="hover:text-blue-200 transition-colors">Sponsor</Link>
           </nav>
         </div>
       </header>
@@ -130,17 +130,6 @@ export default async function ShiurPage({ params }: { params: Promise<{ id: stri
             )}
           </div>
         </div>
-
-        {/* Thumbnail if exists */}
-        {shiur.thumbnail && (
-          <div className="mb-4 md:mb-6">
-            <img
-              src={shiur.thumbnail}
-              alt={shiur.title}
-              className="w-full max-w-2xl rounded-xl shadow-md"
-            />
-          </div>
-        )}
 
         {/* Platform Icons - Full Width Centered */}
         {shiur.platformLinks && (
@@ -163,36 +152,18 @@ export default async function ShiurPage({ params }: { params: Promise<{ id: stri
         {shiur.sourceDoc && (
           <SourceSheetViewer sourceDoc={shiur.sourceDoc} title={shiur.title} />
         )}
-      </main>
 
-      {/* Bottom Navigation */}
-      <div className="bg-white border-t border-gray-200 py-4 fixed bottom-16 left-0 right-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 flex items-center justify-center gap-4 md:gap-8">
-          <Link
-            href="/"
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full text-sm font-medium hover:bg-primary/90 transition-all hover:scale-105 shadow-md"
-          >
-            <i className="fas fa-home"></i>
-            <span className="hidden md:inline">Home</span>
-          </Link>
-          <a
-            href="https://chat.whatsapp.com/BdUZM8mzvXuEpgS9MoGN9W"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-full text-sm font-medium hover:bg-[#128C7E] transition-all hover:scale-105 shadow-md"
-          >
-            <i className="fab fa-whatsapp"></i>
-            <span className="hidden md:inline">WhatsApp</span>
-          </a>
-          <a
-            href="mailto:rabbikraz1@gmail.com"
-            className="flex items-center gap-2 px-4 py-2 bg-secondary text-white rounded-full text-sm font-medium hover:bg-secondary/90 transition-all hover:scale-105 shadow-md"
-          >
-            <i className="fas fa-gift"></i>
-            <span className="hidden md:inline">Sponsor</span>
-          </a>
-        </div>
-      </div>
+        {/* Thumbnail at bottom if exists */}
+        {shiur.thumbnail && (
+          <div className="mt-4 md:mt-6 mb-20">
+            <img
+              src={shiur.thumbnail}
+              alt={shiur.title}
+              className="w-full max-w-2xl mx-auto rounded-xl shadow-md"
+            />
+          </div>
+        )}
+      </main>
 
       {/* Sticky Audio Player - Fixed at Bottom */}
       <StickyAudioPlayer shiur={shiur} />

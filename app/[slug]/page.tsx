@@ -1,33 +1,170 @@
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
+import Link from 'next/link'
+import type { Metadata } from 'next'
+import { formatDate, formatDuration, extractYouTubeVideoId, getYouTubeThumbnail } from '@/lib/utils'
+import PlatformLinks from '@/components/PlatformLinks'
+import SourceSheetViewer from '@/components/SourceSheetViewer'
+import StickyAudioPlayer from '@/components/StickyAudioPlayer'
 import { getDb, getD1Database } from '@/lib/db'
-import { shiurim } from '@/lib/schema'
+import { shiurim, platformLinks } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
+export const revalidate = 60
+
+async function getShiurBySlug(slug: string) {
+    try {
+        const d1 = await getD1Database()
+
+        if (!d1) {
+            console.error('D1 database not available')
+            return null
+        }
+
+        const db = getDb(d1)
+
+        const shiur = await db
+            .select()
+            .from(shiurim)
+            .where(eq(shiurim.slug, slug))
+            .get()
+
+        if (!shiur) {
+            return null
+        }
+
+        // Fetch platform links
+        const links = await db
+            .select()
+            .from(platformLinks)
+            .where(eq(platformLinks.shiurId, shiur.id))
+            .get()
+
+        return {
+            ...shiur,
+            platformLinks: links || null,
+        }
+    } catch (error) {
+        console.error('Error fetching shiur:', error)
+        return null
+    }
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+    const { slug } = await params
+    const shiur = await getShiurBySlug(slug) as any
+
+    if (!shiur) {
+        return {
+            title: 'Shiur Not Found',
+        }
+    }
+
+    const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube || shiur.link)
+    const thumbnailUrl = shiur.thumbnail || getYouTubeThumbnail(youtubeVideoId)
+
+    return {
+        title: `${shiur.title} — Rabbi Kraz's Shiurim`,
+        description: shiur.blurb || shiur.description?.replace(/<[^>]*>/g, '').substring(0, 160) || 'Source sheet and audio for this powerful shiur by Rabbi Kraz',
+        openGraph: {
+            title: `${shiur.title} — Rabbi Kraz's Shiurim`,
+            description: shiur.blurb || shiur.description?.replace(/<[^>]*>/g, '').substring(0, 160) || 'Source sheet and audio for this powerful shiur by Rabbi Kraz',
+            images: thumbnailUrl ? [
+                {
+                    url: thumbnailUrl,
+                    width: 1200,
+                    height: 630,
+                    alt: shiur.title,
+                }
+            ] : [],
+            type: 'website',
+        },
+        twitter: {
+            card: 'summary_large_image',
+            title: `${shiur.title} — Rabbi Kraz's Shiurim`,
+            description: shiur.blurb || shiur.description?.replace(/<[^>]*>/g, '').substring(0, 160) || 'Source sheet and audio for this powerful shiur by Rabbi Kraz',
+            images: thumbnailUrl ? [thumbnailUrl] : [],
+        },
+    }
+}
 
 export default async function SlugPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params
-
-    const d1 = await getD1Database()
-
-    if (!d1) {
-        notFound()
-    }
-
-    const db = getDb(d1)
-
-    // Find shiur by slug
-    const shiur = await db
-        .select({ id: shiurim.id })
-        .from(shiurim)
-        .where(eq(shiurim.slug, slug))
-        .get()
+    const shiur = await getShiurBySlug(slug) as any
 
     if (!shiur) {
         notFound()
     }
 
-    // Redirect to the main shiur page
-    redirect(`/shiur/${shiur.id}`)
+    return (
+        <div className="min-h-screen flex flex-col bg-gray-50/50">
+            {/* Compact Header */}
+            <header className="bg-primary text-white py-2 md:py-4">
+                <div className="max-w-5xl mx-auto px-4 flex items-center justify-between">
+                    <Link href="/" className="font-serif text-lg md:text-2xl font-semibold hover:text-blue-200 transition-colors">
+                        Rabbi Kraz's Shiurim
+                    </Link>
+                    <nav className="flex items-center gap-3 md:gap-6 text-xs md:text-sm">
+                        <Link href="/" className="hover:text-blue-200 transition-colors">Home</Link>
+                        <Link href="/archive" className="hover:text-blue-200 transition-colors">Archive</Link>
+                        <Link href="/sponsor" className="hover:text-blue-200 transition-colors">Sponsor</Link>
+                    </nav>
+                </div>
+            </header>
+
+            <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-4 md:py-6 pb-20">
+                {/* Title Section */}
+                <div className="mb-4 md:mb-6">
+                    <h1 className="font-serif text-xl md:text-3xl font-bold text-primary mb-2 leading-tight">
+                        {shiur.title}
+                    </h1>
+                    <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
+                        <span>{formatDate(shiur.pubDate)}</span>
+                        {shiur.duration && (
+                            <>
+                                <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
+                                <span>{formatDuration(shiur.duration)}</span>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* Platform Icons */}
+                {shiur.platformLinks && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
+                        <h2 className="font-serif text-lg md:text-xl font-semibold text-primary mb-4 text-center">
+                            Listen Now
+                        </h2>
+                        <PlatformLinks links={shiur.platformLinks} title={shiur.title} />
+                    </div>
+                )}
+
+                {/* Blurb */}
+                {shiur.blurb && (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 md:p-6 mb-4 md:mb-6">
+                        <p className="text-sm md:text-base text-gray-700 leading-relaxed">{shiur.blurb}</p>
+                    </div>
+                )}
+
+                {/* Source Sheet */}
+                {shiur.sourceDoc && (
+                    <SourceSheetViewer sourceDoc={shiur.sourceDoc} title={shiur.title} />
+                )}
+
+                {/* Thumbnail at bottom */}
+                {shiur.thumbnail && (
+                    <div className="mt-4 md:mt-6 mb-20">
+                        <img
+                            src={shiur.thumbnail}
+                            alt={shiur.title}
+                            className="w-full max-w-2xl mx-auto rounded-xl shadow-md"
+                        />
+                    </div>
+                )}
+            </main>
+
+            <StickyAudioPlayer shiur={shiur} />
+        </div>
+    )
 }
