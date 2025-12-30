@@ -118,11 +118,16 @@ async function getVideos() {
 export default async function VideosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>
+  searchParams: Promise<{ page?: string; shortsPage?: string }>
 }) {
   const allVideos = await getVideos()
-  const { page: pageParam } = await searchParams
+  const { page: pageParam, shortsPage: shortsPageParam } = await searchParams
+
   const page = parseInt(pageParam || '1', 10)
+  const shortsPage = parseInt(shortsPageParam || '1', 10)
+
+  const shiurim = allVideos.filter(v => v.type === 'shiur')
+  const shorts = allVideos.filter(v => v.type === 'short')
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50/50">
@@ -133,7 +138,7 @@ export default async function VideosPage({
             Videos
           </h1>
           <p className="text-muted-foreground">
-            Watch shiurim and shorts on YouTube ({allVideos.length} videos)
+            Watch shiurim and shorts on YouTube
           </p>
         </div>
 
@@ -151,7 +156,47 @@ export default async function VideosPage({
             </a>
           </div>
         ) : (
-          <VideosGrid initialVideos={allVideos} currentPage={page} />
+          <div className="space-y-8">
+            {/* Full Videos Section */}
+            <details className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden" open>
+              <summary className="flex items-center justify-between p-6 cursor-pointer bg-white hover:bg-gray-50 transition-colors list-none select-none">
+                <span className="font-serif text-2xl font-semibold text-primary">
+                  Full Shiurim ({shiurim.length})
+                </span>
+                <span className="transform group-open:rotate-180 transition-transform duration-200">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </summary>
+              <div className="p-6 border-t border-gray-100">
+                <VideosGrid
+                  initialVideos={shiurim}
+                  currentPage={page}
+                  paramName="page"
+                  showFilters={false}
+                />
+              </div>
+            </details>
+
+            {/* Shorts Section */}
+            <details className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <summary className="flex items-center justify-between p-6 cursor-pointer bg-white hover:bg-gray-50 transition-colors list-none select-none">
+                <span className="font-serif text-2xl font-semibold text-primary">
+                  Shorts ({shorts.length})
+                </span>
+                <span className="transform group-open:rotate-180 transition-transform duration-200">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                </span>
+              </summary>
+              <div className="p-6 border-t border-gray-100">
+                <VideosGrid
+                  initialVideos={shorts}
+                  currentPage={shortsPage}
+                  paramName="shortsPage"
+                  showFilters={false}
+                />
+              </div>
+            </details>
+          </div>
         )}
       </main>
     </div>

@@ -2,20 +2,20 @@ import Link from 'next/link'
 
 export default function Header() {
   return (
-    <header className="relative text-white text-center py-16 px-4 overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%)' }}>
+    <header className="relative text-white text-center py-8 md:py-16 px-4 overflow-hidden" style={{ background: 'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%)' }}>
       <div className="absolute inset-0 opacity-10 bg-[url('data:image/svg+xml;base64,...')] mix-blend-overlay"></div>
       <div className="relative z-10 max-w-4xl mx-auto">
-        <div className="w-32 h-32 mx-auto mb-6 shadow-lg rounded-full overflow-hidden border-4 border-white/20 backdrop-blur-sm">
-          <img 
-            src="https://raw.githubusercontent.com/rabbikraz/rabbikraz/main/Kraz%20Icon.png" 
-            alt="Rabbi Kraz" 
+        <div className="w-20 h-20 md:w-32 md:h-32 mx-auto mb-4 md:mb-6 shadow-lg rounded-full overflow-hidden border-4 border-white/20 backdrop-blur-sm">
+          <img
+            src="https://raw.githubusercontent.com/rabbikraz/rabbikraz/main/Kraz%20Icon.png"
+            alt="Rabbi Kraz"
             className="w-full h-full object-cover"
           />
         </div>
-        <h1 className="font-serif text-4xl md:text-6xl font-bold mb-4 tracking-tight leading-tight">
+        <h1 className="font-serif text-3xl md:text-6xl font-bold mb-2 md:mb-4 tracking-tight leading-tight">
           <Link href="/">Rabbi Kraz's Shiurim</Link>
         </h1>
-        <p className="text-lg md:text-xl text-blue-100 max-w-2xl mx-auto font-light">
+        <p className="text-base md:text-xl text-blue-100 max-w-2xl mx-auto font-light">
           Timeless Torah wisdom, delivered with passion. Dive into weekly shiurim that illuminate the soul.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-4">
