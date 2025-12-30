@@ -28,12 +28,11 @@ const platforms = [
     label: 'YT Music',
     icon: 'custom-ytmusic',
     customSvg: (
-      <svg viewBox="0 0 176 176" style={{ width: ICON_SIZE, height: ICON_SIZE }}>
+      <svg viewBox="0 0 176 176" className="w-full h-full">
         <circle fill="#4a90e2" cx="88" cy="88" r="88" />
-        <path fill="#ffffff" d="M88,46c23.1,0,42,18.8,42,42s-18.8,42-42,42s-42-18.8-42-42S64.9,46,88,46 M88,42
-          c-25.4,0-46,20.6-46,46s20.6,46,46,46s46-20.6,46-46S113.4,42,88,42L88,42z"/>
+        <path fill="#ffffff" d="M88,46c23.1,0,42,18.8,42,42s-18.8,42-42,42s-42-18.8-42-42S64.9,46,88,46 M88,42c-25.4,0-46,20.6-46,46s20.6,46,46,46s46-20.6,46-46S113.4,42,88,42L88,42z" />
         <polygon fill="#ffffff" points="72,111 111,87 72,65" />
-      </svg>
+      </svg >
     )
   },
   {
@@ -56,10 +55,10 @@ const platforms = [
     label: 'Pocket',
     icon: 'custom-pocket',
     customSvg: (
-      <svg viewBox="0 0 32 32" style={{ width: ICON_SIZE, height: ICON_SIZE }}>
+      <svg viewBox="0 0 32 32" className="w-full h-full">
         <circle cx="16" cy="15" r="15" fill="white" />
         <path fill="#4a90e2" fillRule="evenodd" clipRule="evenodd" d="M16 32c8.837 0 16-7.163 16-16S24.837 0 16 0 0 7.163 0 16s7.163 16 16 16Zm0-28.444C9.127 3.556 3.556 9.127 3.556 16c0 6.873 5.571 12.444 12.444 12.444v-3.11A9.333 9.333 0 1 1 25.333 16h3.111c0-6.874-5.571-12.445-12.444-12.445ZM8.533 16A7.467 7.467 0 0 0 16 23.467v-2.715A4.751 4.751 0 1 1 20.752 16h2.715a7.467 7.467 0 0 0-14.934 0Z" />
-      </svg>
+      </svg >
     )
   },
   {
@@ -72,9 +71,8 @@ const platforms = [
     label: 'Castbox',
     icon: 'custom-castbox',
     customSvg: (
-      <svg style={{ width: ICON_SIZE, height: ICON_SIZE }} viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-        <path fill="#4a90e2" d="M396,512H116C51.93,512,0,460.07,0,396V116C0,51.93,51.93,0,116,0h280c64.07,0,116,51.93,116,116v280
-          C512,460.07,460.07,512,396,512z"/>
+      <svg className="w-full h-full" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#4a90e2" d="M396,512H116C51.93,512,0,460.07,0,396V116C0,51.93,51.93,0,116,0h280c64.07,0,116,51.93,116,116v280C512,460.07,460.07,512,396,512z" />
         <g>
           <path fill="#ffffff" d="M284.36,172.15c-9.5,0-17.22,7.32-17.22,16.35v39.56c0,5-4.63,9.05-10.33,9.05
             c-5.71,0-10.34-4.05-10.34-9.05v-53.82c0-9.04-7.71-16.36-17.22-16.36c-9.51,0-17.22,7.32-17.22,16.36v43.14
@@ -89,8 +87,8 @@ const platforms = [
             c9.5,0,17.22-7.32,17.22-16.35v-65.13C356.68,223.65,348.97,216.33,339.46,216.33"/>
           <path fill="#ffffff" d="M394.56,249.45c-9.5,0-17.22,7.32-17.22,16.35v16.21c0,9.03,7.71,16.35,17.22,16.35
             c9.51,0,17.22-7.32,17.22-16.35V265.8C411.78,256.77,404.08,249.45,394.56,249.45"/>
-        </g>
-      </svg>
+        </g >
+      </svg >
     )
   },
 ]
@@ -118,11 +116,13 @@ export default function PlatformLinks({ links, title }: PlatformLinksProps) {
             rel="noopener noreferrer"
             className="flex flex-col items-center no-underline text-gray-700 text-sm transition-transform hover:-translate-y-1"
           >
-            {platform.customSvg ? (
-              <div className="mb-1 w-6 h-6 md:w-7 md:h-7">{platform.customSvg}</div>
-            ) : (
-              <i className={`${platform.icon} text-[#4a90e2] mb-1 text-2xl md:text-3xl`}></i>
-            )}
+            <div className="mb-1 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center">
+              {platform.customSvg ? (
+                <div className="w-full h-full">{platform.customSvg}</div>
+              ) : (
+                <i className={`${platform.icon} text-[#4a90e2] text-2xl md:text-3xl`}></i>
+              )}
+            </div>
             <span className="text-xs md:text-sm">{platform.label}</span>
           </a>
         )
