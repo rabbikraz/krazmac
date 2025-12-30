@@ -3,18 +3,12 @@ import { ExternalLink, Play, Clock, Eye, Calendar } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import VideoFilters from '@/components/VideoFilters'
 import VideosGrid from '@/components/VideosGrid'
+import { YOUTUBE_API_KEY, YOUTUBE_CHANNEL_ID } from '@/lib/youtube'
 
 export const revalidate = 3600 // Revalidate every hour
 
 async function getVideos() {
   try {
-    const YOUTUBE_CHANNEL_ID = 'UCMrMvXraTLhAtpb0JZQOKhQ'
-    const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
-
-    if (!YOUTUBE_API_KEY || YOUTUBE_API_KEY === 'your-youtube-api-key-here') {
-      return []
-    }
-
     // Get the channel's uploads playlist ID
     const channelResponse = await fetch(
       `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${YOUTUBE_CHANNEL_ID}&key=${YOUTUBE_API_KEY}`,

@@ -1,18 +1,8 @@
 import { NextResponse } from 'next/server'
-
-
-
-const YOUTUBE_CHANNEL_ID = 'UCMrMvXraTLhAtpb0JZQOKhQ'
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
+import { YOUTUBE_API_KEY, YOUTUBE_CHANNEL_ID } from '@/lib/youtube'
 
 export async function GET() {
   try {
-    if (!YOUTUBE_API_KEY || YOUTUBE_API_KEY === 'your-youtube-api-key-here') {
-      return NextResponse.json(
-        { error: 'YouTube API key not configured. Please add YOUTUBE_API_KEY to your .env file.' },
-        { status: 500 }
-      )
-    }
 
     // Get all playlists for the channel
     const playlistsResponse = await fetch(

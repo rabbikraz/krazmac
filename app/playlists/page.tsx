@@ -1,5 +1,6 @@
 import Header from '@/components/Header'
 import { ExternalLink, Play } from 'lucide-react'
+import { YOUTUBE_API_KEY, YOUTUBE_CHANNEL_ID } from '@/lib/youtube'
 
 export const revalidate = 3600 // Revalidate every hour
 
@@ -23,13 +24,6 @@ function getBookOfTorah(title: string): string | null {
 
 async function getPlaylists() {
   try {
-    const YOUTUBE_CHANNEL_ID = 'UCMrMvXraTLhAtpb0JZQOKhQ'
-    const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
-
-    if (!YOUTUBE_API_KEY || YOUTUBE_API_KEY === 'your-youtube-api-key-here') {
-      return []
-    }
-
     const playlistsResponse = await fetch(
       `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&channelId=${YOUTUBE_CHANNEL_ID}&maxResults=50&key=${YOUTUBE_API_KEY}`,
       { next: { revalidate: 3600 } }
