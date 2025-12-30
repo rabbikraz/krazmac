@@ -87,6 +87,7 @@ export async function PUT(
 
     const body = await request.json() as {
       title?: string
+      slug?: string
       description?: string
       blurb?: string
       audioUrl?: string
@@ -103,6 +104,7 @@ export async function PUT(
     // Update shiur
     const updateData: any = {}
     if (data.title !== undefined) updateData.title = data.title
+    if (data.slug !== undefined) updateData.slug = data.slug || null
     if (data.description !== undefined) updateData.description = data.description
     if (data.blurb !== undefined) updateData.blurb = data.blurb
     if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl

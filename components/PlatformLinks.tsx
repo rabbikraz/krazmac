@@ -127,17 +127,6 @@ export default function PlatformLinks({ links, title }: PlatformLinksProps) {
           </a>
         )
       })}
-
-      {/* RSS Feed link - always show */}
-      <a
-        href="https://anchor.fm/s/d89491c4/podcast/rss"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex flex-col items-center no-underline text-gray-700 text-sm transition-transform hover:-translate-y-1"
-      >
-        <i className="fas fa-rss text-[#4a90e2] mb-1" style={{ fontSize: ICON_SIZE }}></i>
-        <span className="text-sm">RSS</span>
-      </a>
     </div>
   )
 }

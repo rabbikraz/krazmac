@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 interface Shiur {
   id?: string
   guid?: string
+  slug?: string | null
   title?: string
   description?: string | null
   blurb?: string | null
@@ -34,6 +35,7 @@ interface ShiurFormProps {
 export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps) {
   const [formData, setFormData] = useState({
     guid: shiur?.guid || '',
+    slug: shiur?.slug || '',
     title: shiur?.title || '',
     description: shiur?.description || '',
     blurb: shiur?.blurb || '',
@@ -63,6 +65,7 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
     try {
       const payload = {
         guid: formData.guid || undefined,
+        slug: formData.slug || undefined,
         title: formData.title,
         description: formData.description || undefined,
         blurb: formData.blurb || undefined,
@@ -145,6 +148,23 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
               required
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Custom URL Slug
+            </label>
+            <div className="flex items-center">
+              <span className="text-gray-500 text-sm mr-2">/s/</span>
+              <input
+                type="text"
+                value={formData.slug}
+                onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
+                placeholder="e.g., dreams"
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Optional. Creates a short memorable URL like /s/dreams</p>
           </div>
 
           <div>
