@@ -152,16 +152,21 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                     <SourceSheetViewer sourceDoc={shiur.sourceDoc} title={shiur.title} />
                 )}
 
-                {/* Thumbnail at bottom */}
-                {shiur.thumbnail && (
-                    <div className="mt-4 md:mt-6 mb-20">
-                        <img
-                            src={shiur.thumbnail}
-                            alt={shiur.title}
-                            className="w-full max-w-2xl mx-auto rounded-xl shadow-md"
-                        />
-                    </div>
-                )}
+                {/* Thumbnail at bottom - auto-pull from YouTube or use manual */}
+                {(() => {
+                    const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube || shiur.link)
+                    const thumbnailUrl = shiur.thumbnail || getYouTubeThumbnail(youtubeVideoId)
+                    if (!thumbnailUrl) return null
+                    return (
+                        <div className="mt-4 md:mt-6 mb-20">
+                            <img
+                                src={thumbnailUrl}
+                                alt={shiur.title}
+                                className="w-full max-w-2xl mx-auto rounded-xl shadow-md"
+                            />
+                        </div>
+                    )
+                })()}
             </main>
 
             <StickyAudioPlayer shiur={shiur} />
