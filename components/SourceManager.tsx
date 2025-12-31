@@ -127,7 +127,8 @@ export default function SourceManager() {
     // Convert PDF to images using pdf.js (runs in browser)
     const convertPdfToImages = async (pdfFile: File): Promise<Blob[]> => {
         const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+        // Use local worker file from public folder
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
         const arrayBuffer = await pdfFile.arrayBuffer()
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
