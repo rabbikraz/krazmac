@@ -1,19 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import dynamic from 'next/dynamic'
 import AdminLogin from '@/components/AdminLogin'
+import SourceManager from '@/components/SourceManager'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-
-const SourceManager = dynamic(() => import('@/components/SourceManager'), {
-    ssr: false,
-    loading: () => (
-        <div className="flex items-center justify-center p-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-    )
-})
 
 export default function SourcesPage() {
     const [isAuthenticated, setIsAuthenticated] = useState(false)
