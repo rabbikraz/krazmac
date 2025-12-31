@@ -95,24 +95,48 @@ function parseSourcesFromText(text: string): Array<{ id: string; text: string; t
     if (!text.trim()) return []
 
     const sources: Array<{ id: string; text: string; type: string; title?: string }> = []
-    const blocks = text.split(/\n{2,}/).map(b => b.trim()).filter(b => b.length > 15)
+
+    // Normalize newlines
+    const cleanText = text.replace(/\r\n/g, '\n')
+
+    // Regex to find source starters:
+    // 1. "Source 1", "Mekor 1", "מקור 1", "מקור א"
+    // 2. Numbered list: "1.", "1)", "(1)", "א.", "א)", "(א)"
+    // 3. Common headers: "Rashi", "Tosafot", "Gemara", etc (if at start of line)
+
+    const sourceSplitRegex = /(?=\n(?:Source|Mekor|מקור|SOURCE)\s+[\dא-ת]+)|(?=\n(?:\d+|[א-ת])[\.\)])|(?=\n\((?:\d+|[א-ת])\))/g
+
+    // If we can't find clear source indicators, fall back to double newline
+    let blocks: string[] = []
+
+    if (sourceSplitRegex.test(cleanText)) {
+        console.log('Detected structured sources, splitting by pattern...')
+        blocks = cleanText.split(sourceSplitRegex).filter(b => b.trim().length > 10)
+    } else {
+        console.log('No clear structure detected, simple split...')
+        blocks = cleanText.split(/\n{2,}/).filter(b => b.trim().length > 15)
+    }
 
     blocks.forEach((block) => {
-        const hebrewChars = (block.match(/[\u0590-\u05FF]/g) || []).length
-        const totalAlphaChars = (block.match(/[a-zA-Z\u0590-\u05FF]/g) || []).length
+        const trimmedBlock = block.trim()
+        const hebrewChars = (trimmedBlock.match(/[\u0590-\u05FF]/g) || []).length
+        const totalAlphaChars = (trimmedBlock.match(/[a-zA-Z\u0590-\u05FF]/g) || []).length
         const isHebrew = totalAlphaChars > 0 && (hebrewChars / totalAlphaChars) > 0.5
 
-        const lines = block.split('\n')
+        const lines = trimmedBlock.split('\n')
         let title = ''
-        let content = block
+        let content = trimmedBlock
 
-        if (lines.length > 1) {
+        // extract title from first line
+        if (lines.length > 0) {
             const firstLine = lines[0].trim()
-            const looksLikeTitle = (
-                firstLine.length < 100 &&
-                (/^[א-ת]/.test(firstLine) || /רמב"ם|גמרא|משנה|שו"ע|רש"י|תוספות|מדרש|פרק|דף/.test(firstLine) || /^\d+[\.\)]/.test(firstLine))
-            )
-            if (looksLikeTitle) {
+            // Check if first line is short and looks like a header/number
+            if (firstLine.length < 50 && (
+                /^(Source|Mekor|מקור|SOURCE)\s+[\dא-ת]+/.test(firstLine) ||
+                /^(\d+|[א-ת])[\.\)]/.test(firstLine) ||
+                /^\((?:\d+|[א-ת])\)/.test(firstLine) ||
+                /רמב"ם|גמרא|משנה|שו"ע|רש"י|תוספות|מדרש|פרק|דף/.test(firstLine)
+            )) {
                 title = firstLine
                 content = lines.slice(1).join('\n').trim()
             }
@@ -120,7 +144,7 @@ function parseSourcesFromText(text: string): Array<{ id: string; text: string; t
 
         sources.push({
             id: crypto.randomUUID(),
-            text: content || block,
+            text: content || trimmedBlock,
             type: isHebrew ? 'hebrew' : 'english',
             title: title || undefined
         })
