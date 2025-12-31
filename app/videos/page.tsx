@@ -71,8 +71,24 @@ async function getVideos() {
     // Format all videos and mark them as shiurim or shorts
     const videos = allVideos
       .map((video: any) => {
-        const duration = video.contentDetails.duration
+        const duration = video.contentDetails?.duration || 'PT0S'
         const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+
+        // Handle null match (invalid duration format)
+        if (!match) {
+          return {
+            id: video.id,
+            title: video.snippet.title,
+            description: video.snippet.description,
+            thumbnail: video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
+            publishedAt: video.snippet.publishedAt,
+            duration: '0:00',
+            viewCount: parseInt(video.statistics?.viewCount || '0'),
+            videoUrl: `https://www.youtube.com/watch?v=${video.id}`,
+            type: 'shiur',
+          }
+        }
+
         const hours = parseInt(match[1] || '0')
         const minutes = parseInt(match[2] || '0')
         const seconds = parseInt(match[3] || '0')
