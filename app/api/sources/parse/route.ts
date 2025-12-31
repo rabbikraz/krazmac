@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || 'K83119185988957'
+const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyAXKKKN7H5WmZjQXipg7ghBQHkIxhVyWN0'
 
 export async function POST(request: NextRequest) {
     try {
@@ -23,9 +24,14 @@ export async function POST(request: NextRequest) {
         const isImage = file.type.startsWith('image/')
         const isPdf = file.type === 'application/pdf'
 
-        if (useOCR || isImage) {
-            // Use OCR.space for both PDFs and images
-            console.log('Using OCR.space...')
+        if (isImage) {
+            // Use Google Vision for images (supports Hebrew, up to 10MB)
+            console.log('Using Google Vision for image...')
+            text = await ocrWithGoogleVision(buffer)
+            method = 'google_vision'
+        } else if (isPdf && useOCR) {
+            // Use OCR.space for PDFs (1MB limit, auto-detect language)
+            console.log('Using OCR.space for PDF...')
             text = await ocrWithOcrSpace(buffer, file.name, file.type)
             method = 'ocr_space'
         } else if (isPdf) {
@@ -35,7 +41,7 @@ export async function POST(request: NextRequest) {
             method = 'pdf_text'
 
             if (!text.trim()) {
-                // No embedded text, use OCR
+                // No embedded text, use OCR.space
                 console.log('No embedded text, falling back to OCR.space...')
                 text = await ocrWithOcrSpace(buffer, file.name, file.type)
                 method = 'ocr_space'
@@ -62,33 +68,68 @@ export async function POST(request: NextRequest) {
     }
 }
 
+// Google Cloud Vision - for images, supports Hebrew, up to 10MB
+async function ocrWithGoogleVision(buffer: Buffer): Promise<string> {
+    const base64Image = buffer.toString('base64')
+
+    const requestBody = {
+        requests: [
+            {
+                image: { content: base64Image },
+                features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                imageContext: {
+                    languageHints: ['he', 'en', 'yi'] // Hebrew, English, Yiddish
+                }
+            }
+        ]
+    }
+
+    console.log('Calling Google Vision API...')
+
+    const response = await fetch(
+        `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        }
+    )
+
+    const data = await response.json() as any
+
+    if (!response.ok) {
+        throw new Error(`Google Vision error: ${data.error?.message || response.statusText}`)
+    }
+
+    if (data.responses?.[0]?.error) {
+        throw new Error(`Vision API error: ${data.responses[0].error.message}`)
+    }
+
+    return data.responses?.[0]?.fullTextAnnotation?.text || ''
+}
+
+// OCR.space - for PDFs, 1MB limit, auto-detect language
 async function ocrWithOcrSpace(buffer: Buffer, filename: string, mimeType: string): Promise<string> {
     const base64Data = buffer.toString('base64')
     const base64File = `data:${mimeType};base64,${base64Data}`
 
-    // Use Engine 1 with auto-detect
     const formData = new FormData()
     formData.append('base64Image', base64File)
-    // Note: Hebrew not available in free tier, using auto-detect
     formData.append('isOverlayRequired', 'false')
-    formData.append('filetype', mimeType === 'application/pdf' ? 'PDF' : 'AUTO')
+    formData.append('filetype', 'PDF')
     formData.append('detectOrientation', 'true')
     formData.append('scale', 'true')
     formData.append('OCREngine', '1')
 
-    console.log('Calling OCR.space API with Hebrew...')
+    console.log('Calling OCR.space API...')
 
     const response = await fetch('https://api.ocr.space/parse/image', {
         method: 'POST',
-        headers: {
-            'apikey': OCR_SPACE_API_KEY
-        },
+        headers: { 'apikey': OCR_SPACE_API_KEY },
         body: formData
     })
 
     const data = await response.json() as any
-
-    console.log('OCR.space response:', JSON.stringify(data).substring(0, 500))
 
     if (data.IsErroredOnProcessing) {
         throw new Error(`OCR.space error: ${data.ErrorMessage?.[0] || 'Unknown error'}`)
@@ -98,17 +139,11 @@ async function ocrWithOcrSpace(buffer: Buffer, filename: string, mimeType: strin
         throw new Error(`OCR failed with exit code: ${data.OCRExitCode}. ${data.ErrorMessage?.[0] || ''}`)
     }
 
-    // Combine text from all parsed results (for multi-page PDFs)
-    const allText = data.ParsedResults
-        ?.map((result: any) => result.ParsedText || '')
-        .join('\n\n') || ''
-
-    return allText.trim()
+    return data.ParsedResults?.map((r: any) => r.ParsedText || '').join('\n\n') || ''
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
     const pdfString = buffer.toString('latin1')
-
     const textBlocks: string[] = []
     const streamRegex = /stream\s*([\s\S]*?)\s*endstream/g
     let match
@@ -139,11 +174,7 @@ function parseSourcesFromText(text: string): Array<{ id: string; text: string; t
     if (!text.trim()) return []
 
     const sources: Array<{ id: string; text: string; type: string; title?: string }> = []
-
-    const blocks = text
-        .split(/\n{2,}/)
-        .map(b => b.trim())
-        .filter(b => b.length > 15)
+    const blocks = text.split(/\n{2,}/).map(b => b.trim()).filter(b => b.length > 15)
 
     blocks.forEach((block) => {
         const hebrewChars = (block.match(/[\u0590-\u05FF]/g) || []).length
@@ -158,13 +189,8 @@ function parseSourcesFromText(text: string): Array<{ id: string; text: string; t
             const firstLine = lines[0].trim()
             const looksLikeTitle = (
                 firstLine.length < 100 &&
-                (
-                    /^[א-ת]/.test(firstLine) ||
-                    /רמב"ם|גמרא|משנה|שו"ע|רש"י|תוספות|מדרש|פרק|דף/.test(firstLine) ||
-                    /^\d+[\.\)]/.test(firstLine)
-                )
+                (/^[א-ת]/.test(firstLine) || /רמב"ם|גמרא|משנה|שו"ע|רש"י|תוספות|מדרש|פרק|דף/.test(firstLine) || /^\d+[\.\)]/.test(firstLine))
             )
-
             if (looksLikeTitle) {
                 title = firstLine
                 content = lines.slice(1).join('\n').trim()
