@@ -1,6 +1,7 @@
 import Header from '@/components/Header'
 import { ExternalLink, Play } from 'lucide-react'
 import { YOUTUBE_API_KEY, YOUTUBE_CHANNEL_ID } from '@/lib/youtube'
+import PlaylistCategory from '@/components/PlaylistCategory'
 
 export const revalidate = 3600 // Revalidate every hour
 
@@ -37,11 +38,15 @@ const PLAYLIST_CATEGORIES = [
   }
 ]
 
-function getCategory(title: string): string | null {
+function getCategoryInfo(title: string): { name: string, orderIndex: number } | null {
   const lowerTitle = title.toLowerCase()
   for (const category of PLAYLIST_CATEGORIES) {
-    if (category.keywords.some(keyword => lowerTitle.includes(keyword))) {
-      return category.name
+    const keywordIndex = category.keywords.findIndex(keyword => lowerTitle.includes(keyword))
+    if (keywordIndex !== -1) {
+      return {
+        name: category.name,
+        orderIndex: keywordIndex
+      }
     }
   }
   return null
@@ -65,16 +70,20 @@ async function getPlaylists() {
       return []
     }
 
-    return playlistsData.items.map((item: any) => ({
-      id: item.id,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
-      videoCount: item.contentDetails?.itemCount || 0,
-      publishedAt: item.snippet.publishedAt,
-      playlistUrl: `https://www.youtube.com/playlist?list=${item.id}`,
-      category: getCategory(item.snippet.title),
-    }))
+    return playlistsData.items.map((item: any) => {
+      const catInfo = getCategoryInfo(item.snippet.title)
+      return {
+        id: item.id,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        thumbnail: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+        videoCount: item.contentDetails?.itemCount || 0,
+        publishedAt: item.snippet.publishedAt,
+        playlistUrl: `https://www.youtube.com/playlist?list=${item.id}`,
+        category: catInfo?.name || null,
+        orderIndex: catInfo?.orderIndex ?? 999
+      }
+    })
   } catch (error) {
     console.error('Error fetching playlists:', error)
     return []
@@ -97,6 +106,11 @@ export default async function PlaylistsPage() {
     } else {
       ungroupedPlaylists.push(playlist)
     }
+  })
+
+  // Sort within groups
+  Object.keys(groupedPlaylists).forEach(key => {
+    groupedPlaylists[key].sort((a: any, b: any) => a.orderIndex - b.orderIndex)
   })
 
   // Sort categories in order
@@ -129,124 +143,26 @@ export default async function PlaylistsPage() {
             </a>
           </div>
         ) : (
-          <div className="space-y-12">
-            {/* Grouped by Category */}
+          <div className="space-y-8">
+            {/* Grouped by Category - Collapsible */}
             {sortedCategories.map((category) => {
               const categoryPlaylists = groupedPlaylists[category.name]
+              const title = `${category.name} ${category.english !== 'Holidays' ? `(${category.english})` : ''}`
               return (
-                <div key={category.name} className="space-y-6">
-                  <h2 className="font-serif text-2xl md:text-3xl font-bold text-primary border-b-2 border-primary pb-2">
-                    {category.name} {category.english !== 'Holidays' && `(${category.english})`}
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {categoryPlaylists.map((playlist: any) => (
-                      <a
-                        key={playlist.id}
-                        href={`https://www.youtube.com/playlist?list=${playlist.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 overflow-hidden flex flex-col h-full group"
-                      >
-                        <div className="relative aspect-video bg-gray-200 overflow-hidden">
-                          {playlist.thumbnail ? (
-                            <img
-                              src={playlist.thumbnail}
-                              alt={playlist.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                              <Play className="w-12 h-12 text-gray-400" />
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-3">
-                              <Play className="w-6 h-6 text-primary" />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="p-5 flex-1 flex flex-col">
-                          <h3 className="font-serif text-xl font-semibold text-primary mb-2 line-clamp-2 group-hover:text-secondary transition-colors">
-                            {playlist.title}
-                          </h3>
-                          {playlist.description && (
-                            <p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">
-                              {playlist.description}
-                            </p>
-                          )}
-                          <div className="flex items-center justify-between pt-4 mt-auto border-t border-gray-50">
-                            <span className="text-xs text-muted-foreground">
-                              {playlist.videoCount || 0} {playlist.videoCount === 1 ? 'video' : 'videos'}
-                            </span>
-                            <span className="text-xs text-primary font-medium flex items-center gap-1 group-hover:text-secondary transition-colors">
-                              Watch
-                              <ExternalLink className="w-3 h-3" />
-                            </span>
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                </div>
+                <PlaylistCategory
+                  key={category.name}
+                  title={title}
+                  playlists={categoryPlaylists}
+                />
               )
             })}
 
-            {/* Ungrouped playlists */}
+            {/* Ungrouped playlists - Collapsible */}
             {ungroupedPlaylists.length > 0 && (
-              <div className="space-y-6">
-                <h2 className="font-serif text-2xl md:text-3xl font-bold text-primary border-b-2 border-primary pb-2">
-                  Miscellaneous
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {ungroupedPlaylists.map((playlist: any) => (
-                    <a
-                      key={playlist.id}
-                      href={`https://www.youtube.com/playlist?list=${playlist.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-gray-100 overflow-hidden flex flex-col h-full group"
-                    >
-                      <div className="relative aspect-video bg-gray-200 overflow-hidden">
-                        {playlist.thumbnail ? (
-                          <img
-                            src={playlist.thumbnail}
-                            alt={playlist.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                            <Play className="w-12 h-12 text-gray-400" />
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-3">
-                            <Play className="w-6 h-6 text-primary" />
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-5 flex-1 flex flex-col">
-                        <h3 className="font-serif text-xl font-semibold text-primary mb-2 line-clamp-2 group-hover:text-secondary transition-colors">
-                          {playlist.title}
-                        </h3>
-                        {playlist.description && (
-                          <p className="text-sm text-gray-600 line-clamp-2 mb-4 flex-1">
-                            {playlist.description}
-                          </p>
-                        )}
-                        <div className="flex items-center justify-between pt-4 mt-auto border-t border-gray-50">
-                          <span className="text-xs text-muted-foreground">
-                            {playlist.videoCount || 0} {playlist.videoCount === 1 ? 'video' : 'videos'}
-                          </span>
-                          <span className="text-xs text-primary font-medium flex items-center gap-1 group-hover:text-secondary transition-colors">
-                            Watch
-                            <ExternalLink className="w-3 h-3" />
-                          </span>
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </div>
+              <PlaylistCategory
+                title="Miscellaneous"
+                playlists={ungroupedPlaylists}
+              />
             )}
           </div>
         )}
