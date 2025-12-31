@@ -101,20 +101,53 @@ function parseSourcesFromText(text: string): Array<{ id: string; text: string; t
 
     // Regex to find source starters:
     // 1. "Source 1", "Mekor 1", "מקור 1", "מקור א"
-    // 2. Numbered list: "1.", "1)", "(1)", "א.", "א)", "(א)"
-    // 3. Common headers: "Rashi", "Tosafot", "Gemara", etc (if at start of line)
+    // 2. Numbered list: "1.", "1)", "(1)", "א.", "א)", "(א)", "1-", "א-"
+    // 3. Common headers: "Rashi", "Tosafot", "Gemara", etc.
 
-    const sourceSplitRegex = /(?=\n(?:Source|Mekor|מקור|SOURCE)\s+[\dא-ת]+)|(?=\n(?:\d+|[א-ת])[\.\)])|(?=\n\((?:\d+|[א-ת])\))/g
+    const sourceSplitRegex = new RegExp(
+        // Explicit "Source X" or "Mekor X"
+        '(?=\\n(?:Source|Mekor|מקור|SOURCE)\\s+[\\dא-ת]+)|' +
+        // Numbered list (e.g. "1.", "1)", "(1)", "א.", "א)", "1 -")
+        '(?=\\n(?:\\d+|[א-ת])[\\.\\)\\-] )|' +
+        '(?=\\n\\((?:\\d+|[א-ת])\\))|' +
+        // Common Hebrew headers at start of line
+        '(?=\\n(?:רמב"?ם|גמרא|משנה|שו"?ע|רש"?י|תוספות|מדרש|פרק|דף|סעיף|הלכה|siman|seif)\\s+)',
+        'g'
+    );
 
     // If we can't find clear source indicators, fall back to double newline
     let blocks: string[] = []
 
-    if (sourceSplitRegex.test(cleanText)) {
-        console.log('Detected structured sources, splitting by pattern...')
-        blocks = cleanText.split(sourceSplitRegex).filter(b => b.trim().length > 10)
+    // Check if we have enough splits. If it finds < 2 splits on a large text, it might be failing.
+    const splitCheck = cleanText.split(sourceSplitRegex)
+
+    if (splitCheck.length > 3) {
+        console.log(`Detected structured sources (${splitCheck.length} blocks), splitting by pattern...`)
+        blocks = splitCheck.filter(b => b.trim().length > 5)
     } else {
-        console.log('No clear structure detected, simple split...')
-        blocks = cleanText.split(/\n{2,}/).filter(b => b.trim().length > 15)
+        console.log('No clear structure detected with regex, checking for short header lines...')
+
+        // Alternative strategy: Look for short lines that look like headers
+        // Split by double newline OR by short header-like lines
+        blocks = cleanText.split(/\n{2,}/)
+
+        // If blocks are still huge (>2000 chars), try splitting by any short line
+        if (blocks.some(b => b.length > 2000)) {
+            // Logic: Split on any single newline where the NEXT line is short (<3 words)? 
+            // That's risky. Let's stick to the Regex but try to be looser.
+            console.log('Blocks are huge, falling back to simple newline split for safety')
+            blocks = cleanText.split(/\n+/).reduce((acc: string[], line) => {
+                if (acc.length === 0) return [line]
+                const last = acc[acc.length - 1]
+                // If previous block is long and this line looks like a start, split
+                if (last.length > 500 && line.length < 50) {
+                    acc.push(line)
+                } else {
+                    acc[acc.length - 1] += '\n' + line
+                }
+                return acc
+            }, [])
+        }
     }
 
     blocks.forEach((block) => {
