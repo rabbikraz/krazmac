@@ -94,13 +94,16 @@ export default function SourceManager() {
                     alert('No text was found in the file. Try a different file or add sources manually.')
                 }
             } else {
-                if (data.isPdfScan) {
-                    alert('⚠️ PDF Limitation\n\nThis PDF appears to be scanned/image-based. To process it:\n\n1. Convert the PDF to images (use a tool like PDF to JPG)\n2. Upload the images instead\n3. Enable the OCR option\n\nOr, you can screenshot each page and upload those.')
+                const errorMsg = data.error || 'Unknown error'
+                if (errorMsg.includes('size') || errorMsg.includes('1024')) {
+                    alert('⚠️ File Too Large\n\nThe free OCR service has a 1MB limit.\n\nOptions:\n1. Compress your PDF (use ilovepdf.com)\n2. Screenshot individual pages and upload those\n3. Use the "paste text" option below - copy text from your PDF viewer')
+                } else if (data.isPdfScan) {
+                    alert('⚠️ Scanned PDF\n\nThis PDF is image-based. Enable the OCR option above and try again.\n\nNote: File must be under 1MB.')
                 } else if (data.requiresOCR) {
                     setForceOCR(true)
-                    alert('This is an image file. Please enable the OCR option and try again.')
+                    alert('This is an image file. OCR has been enabled - try again.')
                 } else {
-                    alert('Error: ' + (data.error || 'Unknown error'))
+                    alert('Error: ' + errorMsg)
                 }
             }
         } catch (e) {
