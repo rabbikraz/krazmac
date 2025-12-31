@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, Edit, Trash2, RefreshCw, LogOut } from 'lucide-react'
+import { Plus, Edit, Trash2, RefreshCw, LogOut, FileText } from 'lucide-react'
 import ShiurForm from './ShiurForm'
 
 interface Shiur {
@@ -122,6 +122,13 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-primary">Admin Dashboard</h1>
           <div className="flex items-center gap-4">
+            <Link
+              href="/admin/sources"
+              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+            >
+              <FileText className="w-4 h-4" />
+              Source Manager
+            </Link>
             <button
               onClick={handleSync}
               disabled={syncing}
@@ -232,7 +239,7 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   )
 }
 
