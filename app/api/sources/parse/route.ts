@@ -1,29 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Storage } from '@google-cloud/storage'
-import { ImageAnnotatorClient } from '@google-cloud/vision'
 
-// Credentials
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID
-const EMAIL = process.env.GOOGLE_CLIENT_EMAIL
-const PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-const BUCKET_NAME = process.env.GOOGLE_BUCKET_NAME
-
-// Initialize clients
-const storage = new Storage({
-    projectId: PROJECT_ID,
-    credentials: {
-        client_email: EMAIL,
-        private_key: PRIVATE_KEY,
-    },
-})
-
-const vision = new ImageAnnotatorClient({
-    projectId: PROJECT_ID,
-    credentials: {
-        client_email: EMAIL,
-        private_key: PRIVATE_KEY,
-    },
-})
+const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyAXKKKN7H5WmZjQXipg7ghBQHkIxhVyWN0'
 
 export async function POST(request: NextRequest) {
     try {
@@ -34,101 +11,84 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 })
         }
 
-        if (!PROJECT_ID || !EMAIL || !PRIVATE_KEY || !BUCKET_NAME) {
-            console.error('Missing Google Cloud credentials')
-            return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
-        }
+        console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size)
 
-        console.log('Processing file:', file.name, 'Size:', file.size, 'Type:', file.type)
+        const bytes = await file.arrayBuffer()
+        const buffer = Buffer.from(bytes)
 
-        const buffer = Buffer.from(await file.arrayBuffer())
+        console.log('Using Google Vision API (Client-side pre-processing mode)...')
+        const text = await ocrWithGoogleVision(buffer, file.type)
 
-        // 1. Upload to GCS
-        const fileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
-        const bucket = storage.bucket(BUCKET_NAME)
-        const fileUpload = bucket.file(fileName)
+        console.log('Extracted text length:', text.length)
 
-        console.log('Uploading to GCS:', fileName)
-        await fileUpload.save(buffer, {
-            contentType: file.type,
-            resumable: false
-        })
-
-        const gcsSourceUri = `gs://${BUCKET_NAME}/${fileName}`
-        const outputPrefix = `results-${fileName.split('.')[0]}-`
-        const gcsDestinationUri = `gs://${BUCKET_NAME}/${outputPrefix}`
-
-        // 2. Trigger Vision API
-        console.log('Triggering Vision API Batch Processing...')
-
-        // For PDFs: Async Batch Annotation
-        const [operation] = await vision.asyncBatchAnnotateFiles({
-            requests: [
-                {
-                    inputConfig: {
-                        gcsSource: { uri: gcsSourceUri },
-                        mimeType: file.type === 'application/pdf' ? 'application/pdf' : 'image/png', // Vision supports PDF/TIFF here. If image, use image/png or image/jpeg
-                    },
-                    features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                    outputConfig: {
-                        gcsDestination: { uri: gcsDestinationUri },
-                        batchSize: 20 // Responses per file
-                    },
-                    imageContext: {
-                        languageHints: ['he', 'en', 'yi']
-                    }
-                },
-            ],
-        })
-
-        console.log('Waiting for operation to complete...')
-        await operation.promise()
-        console.log('Batch processing complete.')
-
-        // 3. Download Results
-        console.log('Downloading results...')
-        const [files] = await bucket.getFiles({ prefix: outputPrefix })
-
-        let allText = ''
-
-        // Sort files to ensure page order (output-1.json, output-2.json)
-        files.sort((a, b) => a.name.localeCompare(b.name))
-
-        for (const file of files) {
-            // output files are JSON
-            const [content] = await file.download()
-            const jsonResponse = JSON.parse(content.toString())
-
-            // Combine text from pages
-            const responses = jsonResponse.responses || []
-            for (const response of responses) {
-                if (response.fullTextAnnotation?.text) {
-                    allText += response.fullTextAnnotation.text + '\n\n'
-                }
-            }
-        }
-
-        // Cleanup (optional - maybe keep for debugging or cleanup later)
-        // await fileUpload.delete()
-        // await bucket.deleteFiles({ prefix: outputPrefix })
-
-        console.log('Extracted text length:', allText.length)
-
-        const sources = parseSourcesFromText(allText)
+        const sources = parseSourcesFromText(text)
 
         return NextResponse.json({
             success: true,
-            rawText: allText,
+            rawText: text,
             sources,
-            method: 'google_vision_batch'
+            method: 'google_vision'
         })
-
     } catch (error) {
         console.error('Processing error:', error)
         return NextResponse.json({
             error: 'Failed to process file: ' + (error as Error).message
         }, { status: 500 })
     }
+}
+
+async function ocrWithGoogleVision(buffer: Buffer, mimeType: string): Promise<string> {
+    const base64Content = buffer.toString('base64')
+
+    const requestBody = {
+        requests: [
+            {
+                image: {
+                    content: base64Content
+                },
+                features: [
+                    {
+                        type: 'DOCUMENT_TEXT_DETECTION'
+                    }
+                ],
+                imageContext: {
+                    languageHints: ['he', 'en', 'yi'] // Hebrew, English, Yiddish
+                }
+            }
+        ]
+    }
+
+    console.log('Calling Google Vision API...')
+
+    const response = await fetch(
+        `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        }
+    )
+
+    const data = await response.json() as any
+
+    console.log('Google Vision response status:', response.status)
+
+    if (!response.ok) {
+        console.error('Google Vision API error:', JSON.stringify(data).substring(0, 500))
+        throw new Error(`Google Vision error: ${data.error?.message || response.statusText}`)
+    }
+
+    if (data.responses?.[0]?.error) {
+        throw new Error(`Vision API error: ${data.responses[0].error.message}`)
+    }
+
+    const fullText = data.responses?.[0]?.fullTextAnnotation?.text || ''
+
+    if (!fullText) {
+        console.log('No text detected in file')
+    }
+
+    return fullText
 }
 
 function parseSourcesFromText(text: string): Array<{ id: string; text: string; type: string; title?: string }> {

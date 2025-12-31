@@ -68,29 +68,53 @@ export default function SourceManager() {
         setIsProcessing(true)
 
         try {
-            const formData = new FormData()
-            formData.append('file', file)
+            let filesToProcess: { blob: Blob; name: string }[] = []
 
-            const res = await fetch('/api/sources/parse', {
-                method: 'POST',
-                body: formData
-            })
-
-            const data = await res.json() as {
-                success: boolean
-                rawText: string
-                sources: ParsedSource[]
-                error?: string
+            if (file.type === 'application/pdf') {
+                // Convert PDF pages to images first (Client-side)
+                const images = await convertPdfToImages(file)
+                filesToProcess = images.map((blob, i) => ({ blob, name: `page-${i + 1}.png` }))
+                console.log(`Converted PDF to ${images.length} images`)
+            } else {
+                // Direct image
+                filesToProcess = [{ blob: file, name: file.name }]
             }
 
-            if (data.success) {
-                setRawText(data.rawText)
-                setSources(data.sources)
-                if (data.sources.length === 0) {
-                    alert('No text was found. The scan may be too blurry, or try adding sources manually.')
+            let allText = ''
+            let allSources: ParsedSource[] = []
+
+            for (let i = 0; i < filesToProcess.length; i++) {
+                const { blob, name } = filesToProcess[i]
+                console.log(`Processing ${name} (${i + 1}/${filesToProcess.length})`)
+
+                const formData = new FormData()
+                formData.append('file', blob, name)
+
+                const res = await fetch('/api/sources/parse', {
+                    method: 'POST',
+                    body: formData
+                })
+
+                const data = await res.json() as {
+                    success: boolean
+                    rawText: string
+                    sources: ParsedSource[]
+                    error?: string
                 }
-            } else {
-                alert('Error: ' + (data.error || 'Unknown error'))
+
+                if (data.success) {
+                    allText += data.rawText + '\n\n'
+                    allSources = [...allSources, ...data.sources]
+                } else {
+                    console.error('Error processing page:', data.error)
+                }
+            }
+
+            setRawText(allText.trim())
+            setSources(allSources)
+
+            if (allSources.length === 0) {
+                alert('No text was found. The scan may be too blurry, or try adding sources manually.')
             }
         } catch (e) {
             console.error('Processing error:', e)
@@ -100,9 +124,37 @@ export default function SourceManager() {
         }
     }
 
+    // Convert PDF to images using pdf.js (runs in browser)
+    const convertPdfToImages = async (pdfFile: File): Promise<Blob[]> => {
+        const pdfjsLib = await import('pdfjs-dist')
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
 
+        const arrayBuffer = await pdfFile.arrayBuffer()
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
 
+        const images: Blob[] = []
+        const scale = 2.0 // High quality for OCR
 
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum)
+            const viewport = page.getViewport({ scale })
+
+            const canvas = document.createElement('canvas')
+            canvas.width = viewport.width
+            canvas.height = viewport.height
+
+            // Use 'any' type to bypass TypeScript error for missing canvas property
+            const context = canvas.getContext('2d')!
+            await page.render({ canvasContext: context, viewport, canvas } as any).promise
+
+            const blob = await new Promise<Blob>((resolve) => {
+                canvas.toBlob((b) => resolve(b!), 'image/png', 0.95)
+            })
+            images.push(blob)
+        }
+
+        return images
+    }
 
     const addManualSource = () => {
         const newSource: ParsedSource = {
