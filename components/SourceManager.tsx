@@ -23,6 +23,7 @@ export default function SourceManager() {
     const [shiurim, setShiurim] = useState<Shiur[]>([])
     const [selectedShiur, setSelectedShiur] = useState<string>('')
     const [editingId, setEditingId] = useState<string | null>(null)
+    const [forceOCR, setForceOCR] = useState(false)
 
     // Fetch shiurim for assignment
     useEffect(() => {
@@ -39,9 +40,13 @@ export default function SourceManager() {
         }
     }
 
+    const isValidFile = (f: File) => {
+        return f.type === 'application/pdf' || f.type.startsWith('image/')
+    }
+
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0]
-        if (selectedFile && selectedFile.type === 'application/pdf') {
+        if (selectedFile && isValidFile(selectedFile)) {
             setFile(selectedFile)
             setSources([])
             setRawText('')
@@ -51,7 +56,7 @@ export default function SourceManager() {
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault()
         const droppedFile = e.dataTransfer.files[0]
-        if (droppedFile && droppedFile.type === 'application/pdf') {
+        if (droppedFile && isValidFile(droppedFile)) {
             setFile(droppedFile)
             setSources([])
             setRawText('')
@@ -65,7 +70,8 @@ export default function SourceManager() {
 
         try {
             const formData = new FormData()
-            formData.append('pdf', file)
+            formData.append('file', file)
+            formData.append('useOCR', forceOCR ? 'true' : 'false')
 
             const res = await fetch('/api/sources/parse', {
                 method: 'POST',
@@ -78,7 +84,7 @@ export default function SourceManager() {
                 setRawText(data.rawText)
                 setSources(data.sources)
             } else {
-                alert('Failed to parse PDF: ' + (data.error || 'Unknown error'))
+                alert('Failed to process file: ' + (data.error || 'Unknown error'))
             }
         } catch (e) {
             console.error('Processing error:', e)
@@ -167,7 +173,7 @@ export default function SourceManager() {
             <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                     <Upload className="w-5 h-5 text-primary" />
-                    Upload Source Sheet PDF
+                    Upload Source Sheet
                 </h3>
 
                 <div
@@ -180,7 +186,7 @@ export default function SourceManager() {
                     <input
                         id="pdf-input"
                         type="file"
-                        accept=".pdf"
+                        accept=".pdf,image/*"
                         onChange={handleFileSelect}
                         className="hidden"
                     />
@@ -202,30 +208,46 @@ export default function SourceManager() {
                     ) : (
                         <div>
                             <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                            <p className="text-gray-600 font-medium">Drop your PDF here or click to browse</p>
-                            <p className="text-sm text-gray-500 mt-1">Supports PDFs with selectable text</p>
+                            <p className="text-gray-600 font-medium">Drop your PDF or image here</p>
+                            <p className="text-sm text-gray-500 mt-1">Supports PDFs and images (JPG, PNG)</p>
                         </div>
                     )}
                 </div>
 
                 {file && (
-                    <button
-                        onClick={processFile}
-                        disabled={isProcessing}
-                        className="mt-4 w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        {isProcessing ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                Processing...
-                            </>
-                        ) : (
-                            <>
-                                <FileText className="w-5 h-5" />
-                                Extract Sources
-                            </>
-                        )}
-                    </button>
+                    <div className="mt-4 space-y-3">
+                        {/* OCR Toggle */}
+                        <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={forceOCR}
+                                onChange={(e) => setForceOCR(e.target.checked)}
+                                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary"
+                            />
+                            <div>
+                                <span className="font-medium text-gray-700">Use OCR (Google Vision)</span>
+                                <p className="text-xs text-gray-500">Enable for scanned PDFs or images. Uses Hebrew text recognition.</p>
+                            </div>
+                        </label>
+
+                        <button
+                            onClick={processFile}
+                            disabled={isProcessing}
+                            className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    {forceOCR ? 'Running OCR...' : 'Processing...'}
+                                </>
+                            ) : (
+                                <>
+                                    <FileText className="w-5 h-5" />
+                                    Extract Sources
+                                </>
+                            )}
+                        </button>
+                    </div>
                 )}
             </div>
 

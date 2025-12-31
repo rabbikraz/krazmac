@@ -1,0 +1,20 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/admin/create-user/route": "app/api/admin/create-user/route.js",
+  "/api/auth/check/route": "app/api/auth/check/route.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/api/rss/sync/route": "app/api/rss/sync/route.js",
+  "/api/shiurim/[id]/route": "app/api/shiurim/[id]/route.js",
+  "/api/shiurim/route": "app/api/shiurim/route.js",
+  "/api/youtube/playlists/route": "app/api/youtube/playlists/route.js",
+  "/api/youtube/videos/route": "app/api/youtube/videos/route.js",
+  "/admin/page": "app/admin/page.js",
+  "/admin/sources/page": "app/admin/sources/page.js",
+  "/sponsor/page": "app/sponsor/page.js",
+  "/[slug]/page": "app/[slug]/page.js",
+  "/playlists/page": "app/playlists/page.js",
+  "/page": "app/page.js",
+  "/videos/page": "app/videos/page.js",
+  "/shiur/[id]/page": "app/shiur/[id]/page.js",
+  "/archive/page": "app/archive/page.js"
+}
