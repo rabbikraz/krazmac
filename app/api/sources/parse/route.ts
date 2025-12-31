@@ -69,7 +69,7 @@ async function ocrWithOcrSpace(buffer: Buffer, filename: string, mimeType: strin
     // Use Engine 1
     const formData = new FormData()
     formData.append('base64Image', base64File)
-    formData.append('language', 'eng') // English (free tier may not support Hebrew)
+    formData.append('language', 'heb') // Hebrew
     formData.append('isOverlayRequired', 'false')
     formData.append('filetype', mimeType === 'application/pdf' ? 'PDF' : 'AUTO')
     formData.append('detectOrientation', 'true')
