@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyAXKKKN7H5WmZjQXipg7ghBQHkIxhVyWN0'
+const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || 'K83119185988957'
 
 export async function POST(request: NextRequest) {
     try {
@@ -20,47 +20,32 @@ export async function POST(request: NextRequest) {
         let text = ''
         let method = ''
 
-        // Determine processing method
         const isImage = file.type.startsWith('image/')
         const isPdf = file.type === 'application/pdf'
 
-        if (isImage) {
-            // Images can use Google Vision OCR directly
-            if (useOCR) {
-                console.log('Using Google Vision OCR for image...')
-                text = await ocrWithGoogleVision(buffer)
-                method = 'google_vision'
-            } else {
-                return NextResponse.json({
-                    error: 'Images require OCR. Please enable the OCR option.',
-                    requiresOCR: true
-                }, { status: 400 })
-            }
+        if (useOCR || isImage) {
+            // Use OCR.space for both PDFs and images
+            console.log('Using OCR.space...')
+            text = await ocrWithOcrSpace(buffer, file.name, file.type)
+            method = 'ocr_space'
         } else if (isPdf) {
-            // PDFs: try embedded text extraction first
-            console.log('Extracting embedded text from PDF...')
+            // Try embedded text extraction first
+            console.log('Trying embedded text extraction...')
             text = await extractTextFromPdf(buffer)
             method = 'pdf_text'
 
-            if (!text.trim() && useOCR) {
-                // No embedded text found - inform user about PDF limitation
-                return NextResponse.json({
-                    error: 'This PDF appears to be scanned/image-based. Google Vision cannot directly process PDFs. Please convert your PDF to images (JPG/PNG) first, then upload those.',
-                    isPdfScan: true
-                }, { status: 400 })
-            } else if (!text.trim()) {
-                return NextResponse.json({
-                    error: 'No text found in PDF. This might be a scanned document. Please enable OCR and convert to images first.',
-                    isPdfScan: true
-                }, { status: 400 })
+            if (!text.trim()) {
+                // No embedded text, use OCR
+                console.log('No embedded text, falling back to OCR.space...')
+                text = await ocrWithOcrSpace(buffer, file.name, file.type)
+                method = 'ocr_space'
             }
         } else {
-            return NextResponse.json({ error: 'Unsupported file type. Please upload a PDF or image.' }, { status: 400 })
+            return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 })
         }
 
         console.log('Extracted text length:', text.length, 'Method:', method)
 
-        // Parse the text into individual sources
         const sources = parseSourcesFromText(text)
 
         return NextResponse.json({
@@ -77,66 +62,51 @@ export async function POST(request: NextRequest) {
     }
 }
 
-async function ocrWithGoogleVision(buffer: Buffer): Promise<string> {
-    const base64Image = buffer.toString('base64')
+async function ocrWithOcrSpace(buffer: Buffer, filename: string, mimeType: string): Promise<string> {
+    const base64Data = buffer.toString('base64')
+    const base64File = `data:${mimeType};base64,${base64Data}`
 
-    const requestBody = {
-        requests: [
-            {
-                image: {
-                    content: base64Image
-                },
-                features: [
-                    {
-                        type: 'DOCUMENT_TEXT_DETECTION',
-                        maxResults: 1
-                    }
-                ],
-                imageContext: {
-                    languageHints: ['he', 'en', 'yi']
-                }
-            }
-        ]
-    }
+    // Determine language - use Hebrew + English
+    const formData = new FormData()
+    formData.append('base64Image', base64File)
+    formData.append('language', 'heb') // Hebrew
+    formData.append('isOverlayRequired', 'false')
+    formData.append('filetype', mimeType === 'application/pdf' ? 'PDF' : 'AUTO')
+    formData.append('detectOrientation', 'true')
+    formData.append('scale', 'true')
+    formData.append('OCREngine', '2') // Engine 2 is better for Hebrew
 
-    console.log('Calling Google Vision API...')
+    console.log('Calling OCR.space API...')
 
-    const response = await fetch(
-        `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`,
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody)
-        }
-    )
+    const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        headers: {
+            'apikey': OCR_SPACE_API_KEY
+        },
+        body: formData
+    })
 
     const data = await response.json() as any
 
-    console.log('Google Vision response status:', response.status)
+    console.log('OCR.space response:', JSON.stringify(data).substring(0, 500))
 
-    if (!response.ok) {
-        console.error('Google Vision API error:', data)
-        throw new Error(`Google Vision API error: ${data.error?.message || response.statusText}`)
+    if (data.IsErroredOnProcessing) {
+        throw new Error(`OCR.space error: ${data.ErrorMessage?.[0] || 'Unknown error'}`)
     }
 
-    // Check for errors in the response
-    if (data.responses?.[0]?.error) {
-        throw new Error(`Vision API error: ${data.responses[0].error.message}`)
+    if (data.OCRExitCode !== 1) {
+        throw new Error(`OCR failed with exit code: ${data.OCRExitCode}. ${data.ErrorMessage?.[0] || ''}`)
     }
 
-    const fullText = data.responses?.[0]?.fullTextAnnotation?.text || ''
+    // Combine text from all parsed results (for multi-page PDFs)
+    const allText = data.ParsedResults
+        ?.map((result: any) => result.ParsedText || '')
+        .join('\n\n') || ''
 
-    if (!fullText) {
-        console.log('No text detected in image')
-    }
-
-    return fullText
+    return allText.trim()
 }
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-    // Simple text extraction for PDFs with embedded text
     const pdfString = buffer.toString('latin1')
 
     const textBlocks: string[] = []
