@@ -15,41 +15,31 @@ export async function POST(request: NextRequest) {
         console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size)
 
         const bytes = await file.arrayBuffer()
-        const base64Image = Buffer.from(bytes).toString('base64')
+        const buffer = Buffer.from(bytes)
 
-        // Determine mime type
-        let mimeType = file.type
-        if (mimeType === 'application/pdf') {
-            // For PDFs, we need the client to send us images instead
-            return NextResponse.json({
-                error: 'Please upload images (PNG/JPG). PDFs are converted to images on the client side.',
-                needsConversion: true
-            }, { status: 400 })
-        }
+        // Use Google Vision for OCR
+        console.log('Running OCR with Google Vision...')
+        const rawText = await ocrWithGoogleVision(buffer, file.type)
+        console.log('Extracted text length:', rawText.length)
 
-        console.log('Using Gemini Vision to read and parse source sheet...')
-
-        // Send image directly to Gemini Vision for OCR + Parsing in one step
-        const sources = await parseImageWithGemini(base64Image, mimeType)
-
-        if (!sources || sources.length === 0) {
+        if (rawText.length < 10) {
             return NextResponse.json({
                 success: true,
-                rawText: '[Gemini could not extract sources from this image]',
+                rawText: '',
                 sources: [],
-                method: 'gemini_vision',
-                note: 'Could not identify sources. Try a clearer image or different file.'
+                method: 'google_vision',
+                note: 'No text was found. The scan may be too blurry, or try adding sources manually.'
             })
         }
 
-        // Combine all source texts for rawText display
-        const rawText = sources.map(s => `${s.title || 'Source'}\n${s.text}`).join('\n\n---\n\n')
+        // Simple split: each paragraph or double-newline separated block is a source
+        const sources = simpleParseText(rawText)
 
         return NextResponse.json({
             success: true,
             rawText,
             sources,
-            method: 'gemini_vision'
+            method: 'google_vision'
         })
     } catch (error) {
         console.error('Processing error:', error)
@@ -57,6 +47,26 @@ export async function POST(request: NextRequest) {
             error: 'Failed to process file: ' + (error as Error).message
         }, { status: 500 })
     }
+}
+
+// Simple text parsing - just split by double newlines
+function simpleParseText(text: string): Array<{ id: string; text: string; type: string; title?: string }> {
+    // Split by double newlines or long gaps
+    const blocks = text.split(/\n{2,}/).map(b => b.trim()).filter(b => b.length > 20)
+
+    return blocks.map((block, i) => {
+        const lines = block.split('\n')
+        const firstLine = lines[0].trim()
+        const hebrewChars = (block.match(/[\u0590-\u05FF]/g) || []).length
+        const isHebrew = hebrewChars > block.length * 0.3
+
+        return {
+            id: crypto.randomUUID(),
+            text: block,
+            type: isHebrew ? 'hebrew' : 'english',
+            title: firstLine.length < 60 ? firstLine : `Source ${i + 1}`
+        }
+    })
 }
 
 // Use Gemini Vision to read image AND parse sources in one step
