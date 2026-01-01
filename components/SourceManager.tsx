@@ -6,8 +6,11 @@ import { Upload, FileText, Loader2, Check, Trash2, Save, BookOpen, ChevronDown, 
 interface ParsedSource {
     id: string
     text: string
-    type: 'hebrew' | 'english'
+    type: 'hebrew' | 'english' | 'image'
     title?: string
+    imageData?: string // base64 image data
+    cropBox?: { x: number; y: number; width: number; height: number } | null
+    rotation?: number
 }
 
 interface Shiur {
@@ -428,7 +431,40 @@ Use --- on a new line to separate sources. Example:
                                         />
 
                                         {/* Content */}
-                                        {editingId === source.id ? (
+                                        {source.type === 'image' && source.imageData ? (
+                                            <div className="relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
+                                                {source.cropBox ? (
+                                                    <div
+                                                        className="relative"
+                                                        style={{
+                                                            width: '100%',
+                                                            paddingBottom: `${(source.cropBox.height / source.cropBox.width) * 100}%`
+                                                        }}
+                                                    >
+                                                        <img
+                                                            src={source.imageData}
+                                                            alt={source.title || 'Source'}
+                                                            className="absolute"
+                                                            style={{
+                                                                width: `${100 / (source.cropBox.width / 100)}%`,
+                                                                left: `${-source.cropBox.x / (source.cropBox.width / 100)}%`,
+                                                                top: `${-source.cropBox.y / (source.cropBox.height / 100)}%`,
+                                                                transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined
+                                                            }}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <img
+                                                        src={source.imageData}
+                                                        alt={source.title || 'Source'}
+                                                        className="w-full"
+                                                        style={{
+                                                            transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined
+                                                        }}
+                                                    />
+                                                )}
+                                            </div>
+                                        ) : editingId === source.id ? (
                                             <textarea
                                                 value={source.text}
                                                 onChange={(e) => updateSource(source.id, { text: e.target.value })}

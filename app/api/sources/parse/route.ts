@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBUxKm7aHk1erGj3CPL-Xab8UXSZAWe5IU'
-const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY || 'AIzaSyAXKKKN7H5WmZjQXipg7ghBQHkIxhVyWN0'
 
 export async function POST(request: NextRequest) {
     try {
@@ -22,39 +21,44 @@ export async function POST(request: NextRequest) {
             mimeType = 'image/png'
         }
 
-        // Use Gemini Vision for parsing (FREE!)
-        console.log('Using Gemini Vision for Hebrew source parsing...')
-        const result = await parseWithGemini(base64Data, mimeType)
+        // Use Gemini to identify source regions in the image
+        console.log('Asking Gemini to identify source regions...')
+        const regions = await identifySourceRegions(base64Data, mimeType)
 
-        if (result.sources.length > 0) {
+        if (regions.length === 0) {
+            // If no regions found, treat the whole image as one source
             return NextResponse.json({
                 success: true,
-                rawText: result.rawText,
-                sources: result.sources,
-                method: 'gemini_vision'
+                rawText: '',
+                sources: [{
+                    id: crypto.randomUUID(),
+                    title: 'Source 1',
+                    text: '',
+                    type: 'image',
+                    imageData: `data:${mimeType};base64,${base64Data}`,
+                    cropBox: null // Full image
+                }],
+                method: 'image_regions'
             })
         }
 
-        // Fallback to Google Vision OCR
-        console.log('Gemini returned no sources, trying Google Vision OCR...')
-        const buffer = Buffer.from(bytes)
-        const rawText = await ocrWithGoogleVision(buffer, file.type)
+        // Return the regions - client will handle cropping
+        const sources = regions.map((region, i) => ({
+            id: crypto.randomUUID(),
+            title: region.title || `Source ${i + 1}`,
+            text: region.description || '',
+            type: 'image',
+            imageData: `data:${mimeType};base64,${base64Data}`,
+            cropBox: region.box, // { x, y, width, height } as percentages
+            rotation: region.rotation || 0
+        }))
 
-        if (rawText.length < 10) {
-            return NextResponse.json({
-                success: true,
-                rawText: result.rawText || 'No text extracted',
-                sources: [],
-                method: 'failed'
-            })
-        }
-
-        const sources = simpleParseText(rawText)
         return NextResponse.json({
             success: true,
-            rawText,
+            rawText: '',
             sources,
-            method: 'google_vision'
+            method: 'image_regions',
+            fullImage: `data:${mimeType};base64,${base64Data}`
         })
     } catch (error) {
         console.error('Processing error:', error)
@@ -64,26 +68,37 @@ export async function POST(request: NextRequest) {
     }
 }
 
-async function parseWithGemini(base64Data: string, mimeType: string): Promise<{ rawText: string; sources: Array<{ id: string; text: string; type: string; title?: string }> }> {
-    try {
-        const prompt = `You are an expert in Jewish religious texts. Look at this document and extract ALL Hebrew sources.
-
-For each source you find:
-1. Identify its reference (e.g., "רש"י בראשית א:א", "גמרא ברכות ב.")
-2. Extract the complete text content
-3. Note if it's Hebrew or English
-
-Return a JSON object:
-{
-  "rawText": "All text from the document...",
-  "sources": [
-    {"title": "Source reference", "text": "Full text content", "type": "hebrew"},
-    ...more sources...
-  ]
+interface SourceRegion {
+    title: string
+    description: string
+    box: { x: number; y: number; width: number; height: number } // percentages 0-100
+    rotation: number // 0, 90, 180, 270
 }
 
-Include ALL sources - there may be 5, 10, 20, or 40+ sources.
-Return ONLY valid JSON, no other text.`
+async function identifySourceRegions(base64Data: string, mimeType: string): Promise<SourceRegion[]> {
+    try {
+        const prompt = `Look at this Hebrew source sheet. Sources are typically separated by:
+- Whitespace or gaps
+- Headers or titles
+- Numbers (1, 2, 3 or א, ב, ג)
+- Different font styles
+- Horizontal lines
+
+Identify the RECTANGULAR REGION that contains each source. Even if there's no visible box, identify where each source starts and ends.
+
+For EACH source, provide:
+1. title: What the source appears to be (רש"י, גמרא, רמב"ם, etc.) or "Source 1" if unclear
+2. description: Brief note about the content
+3. box: Rectangle containing this source as percentages (x, y from top-left, width, height)
+4. rotation: If text needs rotation to read (0, 90, 180, 270)
+
+Return ONLY a JSON array, no other text:
+[
+  {"title": "רש\"י", "description": "Commentary", "box": {"x": 0, "y": 0, "width": 100, "height": 25}, "rotation": 0},
+  {"title": "גמרא", "description": "Talmud passage", "box": {"x": 0, "y": 26, "width": 100, "height": 30}, "rotation": 0}
+]
+
+Be generous with region sizes - include headers and some margin. Sources usually stack vertically on the page.`
 
         const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
@@ -97,25 +112,20 @@ Return ONLY valid JSON, no other text.`
                             { inline_data: { mime_type: mimeType, data: base64Data } }
                         ]
                     }],
-                    generationConfig: { temperature: 0.1, maxOutputTokens: 8000 }
+                    generationConfig: { temperature: 0.1, maxOutputTokens: 4000 }
                 })
             }
         )
 
         if (!response.ok) {
-            const errText = await response.text()
-            console.error('Gemini API error:', response.status, errText)
-            return { rawText: `Gemini Error: ${response.status}`, sources: [] }
+            console.error('Gemini API error:', response.status)
+            return []
         }
 
         const data = await response.json() as any
         const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-        console.log('Gemini response length:', content.length)
-
-        if (!content) {
-            return { rawText: 'Gemini returned empty', sources: [] }
-        }
+        console.log('Gemini regions response:', content.substring(0, 200))
 
         // Extract JSON
         let jsonStr = content.trim()
@@ -124,67 +134,10 @@ Return ONLY valid JSON, no other text.`
             if (match) jsonStr = match[1].trim()
         }
 
-        try {
-            const parsed = JSON.parse(jsonStr)
-            return {
-                rawText: parsed.rawText || content,
-                sources: (parsed.sources || []).map((s: any) => ({
-                    id: crypto.randomUUID(),
-                    title: s.title || 'Source',
-                    text: s.text || '',
-                    type: s.type || 'hebrew'
-                }))
-            }
-        } catch {
-            // If JSON parse fails, return raw content as single source
-            return {
-                rawText: content,
-                sources: [{
-                    id: crypto.randomUUID(),
-                    title: 'Extracted Text',
-                    text: content,
-                    type: 'hebrew'
-                }]
-            }
-        }
+        const parsed = JSON.parse(jsonStr)
+        return Array.isArray(parsed) ? parsed : []
     } catch (e) {
-        console.error('Gemini error:', e)
-        return { rawText: `Error: ${(e as Error).message}`, sources: [] }
+        console.error('Region identification error:', e)
+        return []
     }
-}
-
-function simpleParseText(text: string): Array<{ id: string; text: string; type: string; title?: string }> {
-    const blocks = text.split(/\n{2,}/).map(b => b.trim()).filter(b => b.length > 20)
-
-    return blocks.map((block, i) => {
-        const firstLine = block.split('\n')[0].trim()
-        const hebrewChars = (block.match(/[\u0590-\u05FF]/g) || []).length
-
-        return {
-            id: crypto.randomUUID(),
-            text: block,
-            type: hebrewChars > block.length * 0.3 ? 'hebrew' : 'english',
-            title: firstLine.length < 60 ? firstLine : `Source ${i + 1}`
-        }
-    })
-}
-
-async function ocrWithGoogleVision(buffer: Buffer, mimeType: string): Promise<string> {
-    const response = await fetch(
-        `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                requests: [{
-                    image: { content: buffer.toString('base64') },
-                    features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                    imageContext: { languageHints: ['he', 'en'] }
-                }]
-            })
-        }
-    )
-
-    const data = await response.json() as any
-    return data.responses?.[0]?.fullTextAnnotation?.text || ''
 }
