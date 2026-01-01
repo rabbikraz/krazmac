@@ -63,7 +63,7 @@ export default function SourceManager() {
 
                 try {
                     const res = await fetch('/api/sources/parse', { method: 'POST', body: formData })
-                    const data = await res.json()
+                    const data = await res.json() as { success: boolean; regions: any[]; error?: string }
 
                     if (data.success && data.regions) {
                         data.regions.forEach((r: any, idx: number) => {
