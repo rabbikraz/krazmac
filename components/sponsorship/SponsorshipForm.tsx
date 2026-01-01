@@ -231,7 +231,9 @@ export default function SponsorshipForm() {
                                     className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-primary outline-none" />
                             ) : (
                                 <div className="p-3 bg-primary/10 rounded-lg text-primary font-medium text-sm text-center">
-                                    Your sponsorship will be assigned to the next available shiur
+                                    {selectedId === 1 || selectedId === 3
+                                        ? 'Your sponsorship will be assigned to the next available month'
+                                        : 'Your sponsorship will be assigned to the next available shiur'}
                                 </div>
                             )}
                             {errors.date && <p className="text-red-500 text-sm mt-2">{errors.date}</p>}
