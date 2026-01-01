@@ -42,28 +42,24 @@ async function findSourceRegions(base64: string, mimeType: string) {
 
     const prompt = `You are a Layout Analysis AI specialized in Hebrew Text.
 
-CRITICAL INSTRUCTION:
-Do NOT return the whole page as one source. 
-This page contains MULTIPLE distinct source citations (Rashi, Gemara, etc.).
-You MUST split the text into separate parts.
+CRITICAL TASK:
+Scan this Source Sheet image from TOP to BOTTOM.
+Identify the Vertical Y-Position (0-1000) where EACH new distinct source begins.
+An entire page acts as a stack of sources. You must find the cut points.
 
 Look for:
-- Numbering (1, 2, 3...)
-- Bold Headers (Title lines)
-- New Paragraphs with hanging indents
-- Vertical whitespace gaps
+- A bold Header (e.g. "Rashi", "Gemara")
+- A Number/Letter (1, 2, א, ב) at the start of a line
+- A horizontal divider line
+- Significant vertical gap
 
-Task:
-Return a JSON array of bounding boxes ([ymin, xmin, ymax, xmax] 0-1000).
-Find EVERY distinctive text block.
-If you are unsure, split by paragraphs.
-
-Example Output:
-[
-  { "title": "Source 1", "box_2d": [50, 50, 200, 950] },
-  { "title": "Source 2", "box_2d": [210, 50, 450, 950] },
-  { "title": "Source 3", "box_2d": [460, 50, 800, 950] }
-]
+Output a JSON object with a single array "split_points".
+Include 0 as the first point.
+Example:
+{
+  "split_points": [0, 150, 320, 500, 750] 
+}
+This implies source 1 is 0-150, source 2 is 150-320, etc.
 
 Return ONLY valid JSON.`
 
@@ -93,16 +89,26 @@ Return ONLY valid JSON.`
         }
 
         const data = await res.json() as any
-        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-
-        console.log('Gemini:', text.substring(0, 200))
+        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
 
         if (text.includes('```')) {
             const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
             if (match) text = match[1]
         }
 
-        return JSON.parse(text.trim())
+        const result = JSON.parse(text.trim())
+        const splits = result.split_points || []
+
+        // Convert splits to regions
+        return splits.map((y: number, i: number) => {
+            const nextY = splits[i + 1] || 1000
+            if (y >= nextY) return null // bad sort
+            return {
+                title: `Source ${i + 1}`,
+                box_2d: [y, 10, nextY, 990] // Full width (10-990)
+            }
+        }).filter(Boolean)
+
     } catch (e) {
         console.error('Gemini error:', e)
         return []

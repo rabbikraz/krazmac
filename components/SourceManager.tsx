@@ -18,6 +18,7 @@ export default function SourceManager() {
     const [sources, setSources] = useState<Source[]>([])
     const [pageImages, setPageImages] = useState<string[]>([])
 
+    // Simple state: Just one active source being edited (optional)
     const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
 
     const handleDrop = useCallback((e: React.DragEvent) => {
@@ -25,7 +26,7 @@ export default function SourceManager() {
         const f = e.dataTransfer.files[0]
         if (f) {
             setFile(f)
-            processFile(f)
+            processFile(f) // Auto-start
         }
     }, [])
 
@@ -51,6 +52,7 @@ export default function SourceManager() {
                 const imageUrl = await fileToBase64(images[i])
                 newPageImages.push(imageUrl)
 
+                // 3. AI Analysis
                 const formData = new FormData()
                 formData.append('file', images[i])
 
@@ -120,25 +122,25 @@ export default function SourceManager() {
     })
 
     return (
-        <div className="max-w-5xl mx-auto p-8 font-sans">
+        <div className="max-w-4xl mx-auto p-6 font-sans text-sm">
             {/* Header / Upload */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Source Extraction</h1>
-                    <p className="text-gray-500 text-sm mt-1">AI-Powered Source Sheet Parser</p>
+                    <h1 className="text-xl font-bold text-gray-900">Source Extraction</h1>
+                    <p className="text-gray-500 text-xs mt-1">AI-Powered Source Sheet Parser</p>
                 </div>
 
                 {file && (
                     <div className="flex gap-2">
                         <button
                             onClick={() => processFile(file)}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-xs font-medium"
                         >
-                            <RefreshCw className={`w-4 h-4 ${isProcessing ? 'animate-spin' : ''}`} /> Re-Run Analysis
+                            <RefreshCw className={`w-3 h-3 ${isProcessing ? 'animate-spin' : ''}`} /> Re-Run
                         </button>
                         <button
                             onClick={() => { setFile(null); setSources([]); setPageImages([]); }}
-                            className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium ml-2"
+                            className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded text-xs font-medium ml-2"
                         >
                             Reset
                         </button>
@@ -152,13 +154,13 @@ export default function SourceManager() {
                     onDrop={handleDrop}
                     onDragOver={e => e.preventDefault()}
                     onClick={() => document.getElementById('uploader')?.click()}
-                    className="border-2 border-dashed border-gray-200 rounded-2xl p-16 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
+                    className="border-2 border-dashed border-gray-200 rounded-xl p-10 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
                 >
-                    <div className="bg-blue-50 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform">
-                        <Upload className="w-8 h-8 text-blue-600" />
+                    <div className="bg-blue-50 p-3 rounded-full mb-3 group-hover:scale-110 transition-transform">
+                        <Upload className="w-6 h-6 text-blue-600" />
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900">Upload Source Sheet</h3>
-                    <p className="text-gray-500 mt-2">PDFs or Images supported</p>
+                    <h3 className="text-base font-semibold text-gray-900">Upload Source Sheet</h3>
+                    <p className="text-gray-400 text-xs mt-1">PDFs or Images supported</p>
                     <input
                         id="uploader"
                         type="file"
@@ -177,20 +179,20 @@ export default function SourceManager() {
 
             {/* Processing */}
             {isProcessing && (
-                <div className="text-center py-20 animate-pulse">
-                    <Loader2 className="w-10 h-10 text-blue-600 animate-spin mx-auto mb-4" />
-                    <p className="text-gray-500 font-medium">Analyzing layout & geometry...</p>
+                <div className="text-center py-12 animate-pulse">
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
+                    <p className="text-gray-500 font-medium text-xs">Scanning layout...</p>
                 </div>
             )}
 
             {/* Results Grid */}
             {!isProcessing && pageImages.length > 0 && (
-                <div className="space-y-12 relative z-0">
+                <div className="space-y-8 relative z-0">
                     {pageImages.map((img, pageIdx) => (
-                        <div key={pageIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="bg-gray-50 px-4 py-2 border-b flex justify-between items-center">
-                                <span className="font-semibold text-gray-700 text-sm">Page {pageIdx + 1}</span>
-                                <span className="text-xs text-gray-400">{sources.filter(s => s.pageIndex === pageIdx).length} sources detected</span>
+                        <div key={pageIdx} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="bg-gray-50 px-3 py-2 border-b flex justify-between items-center">
+                                <span className="font-semibold text-gray-700 text-xs">Page {pageIdx + 1}</span>
+                                <span className="text-[10px] text-gray-400 uppercase tracking-wider">{sources.filter(s => s.pageIndex === pageIdx).length} sources</span>
                             </div>
 
                             <div className="relative">
@@ -210,11 +212,11 @@ export default function SourceManager() {
                                         }}
                                     >
                                         <div
-                                            className="w-full h-full border-2 border-blue-500 bg-blue-500/10 hover:bg-blue-500/20 cursor-pointer relative transition-all"
+                                            className="w-full h-full border border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 cursor-pointer relative transition-all"
                                             onClick={() => setEditingSourceId(source.id)}
                                         >
-                                            <div className="absolute -top-6 left-0 bg-blue-600 text-white text-xs px-2 py-1 rounded shadow-sm whitespace-nowrap flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <span className="font-bold">{source.title}</span>
+                                            <div className="absolute top-0 left-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-br shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                                {source.title}
                                             </div>
                                         </div>
                                     </div>
@@ -224,59 +226,56 @@ export default function SourceManager() {
                     ))}
 
                     {/* Floating Save Button */}
-                    <div className="flex justify-end pt-8 pb-20 sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent px-4 z-10 pointer-events-none">
-                        <button className="pointer-events-auto px-8 py-3 bg-blue-600 text-white font-bold rounded-full shadow-lg hover:bg-blue-700 hover:scale-105 transition-all flex items-center gap-2">
-                            <Save className="w-5 h-5" /> Save All to Database
+                    <div className="flex justify-center pt-4 pb-12 sticky bottom-0 pointer-events-none">
+                        <button className="pointer-events-auto px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-full shadow-lg hover:bg-blue-700 hover:scale-105 transition-all flex items-center gap-2">
+                            <Save className="w-4 h-4" /> Save All
                         </button>
                     </div>
 
-                    {/* Edit Modal (Z-50) */}
+                    {/* Edit Modal (Compact) */}
                     {editingSourceId && (() => {
                         const source = sources.find(s => s.id === editingSourceId)
                         if (!source) return null
                         const img = pageImages[source.pageIndex]
 
                         return (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8 animate-in fade-in duration-200">
-                                <div className="bg-white rounded-2xl w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-                                    <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="font-bold text-lg">Edit Source</h3>
-                                            <span className="text-gray-400 text-sm px-2 py-0.5 bg-gray-100 rounded">{source.title}</span>
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                                <div className="bg-white rounded-xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+                                    <div className="p-3 border-b flex justify-between items-center bg-gray-50">
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <span className="font-bold">Edit Source</span>
+                                            <span className="text-gray-400 px-2 py-0.5 bg-gray-100 rounded text-xs">{source.title}</span>
                                         </div>
-                                        <button onClick={() => setEditingSourceId(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5" /></button>
+                                        <button onClick={() => setEditingSourceId(null)} className="p-1.5 hover:bg-gray-200 rounded-full"><X className="w-4 h-4" /></button>
                                     </div>
 
-                                    <div className="flex-1 overflow-auto bg-gray-100 p-8 flex justify-center">
+                                    <div className="flex-1 overflow-auto bg-gray-100 p-4 flex justify-center">
                                         <ReactCrop
                                             crop={source.crop}
                                             onChange={(_, p) => onUpdateCrop(source.id, p)}
-                                            className="shadow-lg bg-white"
+                                            className="shadow-sm bg-white"
                                         >
-                                            <img src={img} className="max-h-[70vh] object-contain block" />
+                                            <img src={img} className="max-h-[60vh] object-contain block" />
                                         </ReactCrop>
                                     </div>
 
-                                    <div className="p-4 border-t bg-gray-50 flex justify-between gap-4">
+                                    <div className="p-3 border-t bg-gray-50 flex justify-between gap-3 text-xs">
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => {
                                                     setSources(sources.filter(s => s.id !== editingSourceId))
                                                     setEditingSourceId(null)
                                                 }}
-                                                className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg font-medium flex items-center gap-2 border border-transparent hover:border-red-100"
+                                                className="text-red-600 hover:bg-red-50 px-3 py-1.5 rounded font-medium flex items-center gap-1.5 border border-transparent hover:border-red-100"
                                             >
-                                                <Trash2 className="w-4 h-4" /> Delete
+                                                <Trash2 className="w-3 h-3" /> Delete
                                             </button>
 
                                             <button
                                                 onClick={() => {
                                                     const s = sources.find(x => x.id === editingSourceId)
                                                     if (!s) return
-
-                                                    // Split in half
                                                     const halfH = s.crop.height / 2
-
                                                     const updated = { ...s, crop: { ...s.crop, height: halfH }, title: s.title + ' (1)' }
                                                     const newSrc: Source = {
                                                         id: crypto.randomUUID(),
@@ -284,7 +283,6 @@ export default function SourceManager() {
                                                         pageIndex: s.pageIndex,
                                                         crop: { ...s.crop, y: s.crop.y + halfH, height: halfH }
                                                     }
-
                                                     setSources(prev => {
                                                         const idx = prev.findIndex(p => p.id === editingSourceId)
                                                         const next = [...prev]
@@ -293,16 +291,15 @@ export default function SourceManager() {
                                                         return next
                                                     })
                                                 }}
-                                                className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium flex items-center gap-2"
-                                                title="Split detect region into two halves"
+                                                className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded font-medium flex items-center gap-1.5"
                                             >
-                                                <ScanLine className="w-4 h-4" /> Split Box
+                                                <ScanLine className="w-3 h-3" /> Split Box
                                             </button>
                                         </div>
 
                                         <button
                                             onClick={() => setEditingSourceId(null)}
-                                            className="bg-blue-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-blue-700 shadow-md transform transition active:scale-95"
+                                            className="bg-blue-600 text-white px-6 py-1.5 rounded font-bold hover:bg-blue-700 shadow-sm"
                                         >
                                             Done
                                         </button>
