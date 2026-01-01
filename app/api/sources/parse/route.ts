@@ -15,10 +15,10 @@ export async function POST(request: NextRequest) {
         const base64 = Buffer.from(bytes).toString('base64')
         const mimeType = file.type.startsWith('image/') ? file.type : 'image/png'
 
-        // Try Gemini to auto-detect source regions
-        let regions = await findSourceRegions(base64, mimeType)
+        // Try Gemini to analyze layout
+        let regions = await analyzeAndSlice(base64, mimeType)
 
-        // If Gemini failed or returned nothing, default to one full-page source
+        // If failed, default to one full-page source
         if (!regions || regions.length === 0) {
             regions = [{ title: 'Source 1', box_2d: [0, 0, 1000, 1000] }]
         }
@@ -34,37 +34,34 @@ export async function POST(request: NextRequest) {
     }
 }
 
-async function findSourceRegions(base64: string, mimeType: string) {
+async function analyzeAndSlice(base64: string, mimeType: string) {
     if (!GEMINI_API_KEY) {
         console.log('No Gemini API key')
         return []
     }
 
-    const prompt = `You are a Layout Analysis AI specialized in Jewish Text Source Sheets.
+    // Step 1: Ask AI to COUNT sources and describe layout
+    const prompt = `Analyze this Jewish source sheet image.
 
-CRITICAL OBSERVATION:
-This page uses a COMPLEX LAYOUT with multiple COLUMNS and ROWS.
-It contains between 5 and 20 distinct source citations.
-They are often numbered (handwritten or typed 1, 2, 3...).
+COUNT the number of distinct text sources/citations on this page.
+Look for:
+- Numbered sections (1, 2, 3... or א, ב, ג...)
+- Bold headers separating sources
+- Clear visual gaps between text blocks
 
-TASK:
-Detect the 2D Bounding Box for EVERY distinct source block.
-Do NOT group columns together.
-Source 1 and Source 2 might be side-by-side. Isolate them.
+Also determine the LAYOUT:
+- Is it single column or multiple columns?
+- How many rows of sources are there?
 
-Return a JSON object with a "regions" array.
-Each region: { "title": "Source X", "box_2d": [ymin, xmin, ymax, xmax] }
-(Coordinates 0-1000).
-
-Example:
+Return JSON:
 {
-  "regions": [
-    { "title": "Source 1", "box_2d": [10, 10, 150, 480] },
-    { "title": "Source 2", "box_2d": [10, 520, 150, 990] }
-  ]
+  "source_count": <number between 1 and 20>,
+  "columns": <1 or 2>,
+  "rows": <number of rows>,
+  "layout_description": "<brief description>"
 }
 
-Return ONLY valid JSON.`
+Be precise. Count EVERY separate source block.`
 
     try {
         const res = await fetch(
@@ -94,13 +91,43 @@ Return ONLY valid JSON.`
         const data = await res.json() as any
         let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
 
+        console.log('Gemini raw:', text)
+
         if (text.includes('```')) {
             const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
             if (match) text = match[1]
         }
 
-        const result = JSON.parse(text.trim())
-        return result.regions || []
+        const analysis = JSON.parse(text.trim())
+        const count = Math.min(20, Math.max(1, analysis.source_count || 1))
+        const cols = analysis.columns || 1
+        const rows = analysis.rows || Math.ceil(count / cols)
+
+        console.log(`Detected: ${count} sources, ${cols} columns, ${rows} rows`)
+
+        // Step 2: Generate grid of regions based on count and layout
+        const regions: any[] = []
+        let sourceNum = 1
+
+        const colWidth = Math.floor(1000 / cols)
+        const rowHeight = Math.floor(1000 / rows)
+
+        for (let r = 0; r < rows && sourceNum <= count; r++) {
+            for (let c = 0; c < cols && sourceNum <= count; c++) {
+                const ymin = r * rowHeight
+                const ymax = (r + 1) * rowHeight
+                const xmin = c * colWidth
+                const xmax = (c + 1) * colWidth
+
+                regions.push({
+                    title: `Source ${sourceNum}`,
+                    box_2d: [ymin, xmin, ymax, xmax]
+                })
+                sourceNum++
+            }
+        }
+
+        return regions
 
     } catch (e) {
         console.error('Gemini error:', e)
