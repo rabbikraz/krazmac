@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import { Upload, Loader2, RefreshCw, X, Save, Plus, Trash2 } from 'lucide-react'
+import { Upload, Loader2, RefreshCw, X, Save, Plus, Trash2, Layout, ScanLine } from 'lucide-react'
 import ReactCrop, { Crop, PercentCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 
@@ -240,7 +240,10 @@ export default function SourceManager() {
                             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8 animate-in fade-in duration-200">
                                 <div className="bg-white rounded-2xl w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
                                     <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                                        <h3 className="font-bold text-lg">Adjust "{source.title}"</h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="font-bold text-lg">Edit Source</h3>
+                                            <span className="text-gray-400 text-sm px-2 py-0.5 bg-gray-100 rounded">{source.title}</span>
+                                        </div>
                                         <button onClick={() => setEditingSourceId(null)} className="p-2 hover:bg-gray-200 rounded-full"><X className="w-5 h-5" /></button>
                                     </div>
 
@@ -255,15 +258,48 @@ export default function SourceManager() {
                                     </div>
 
                                     <div className="p-4 border-t bg-gray-50 flex justify-between gap-4">
-                                        <button
-                                            onClick={() => {
-                                                setSources(sources.filter(s => s.id !== editingSourceId))
-                                                setEditingSourceId(null)
-                                            }}
-                                            className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg font-medium flex items-center gap-2"
-                                        >
-                                            <Trash2 className="w-4 h-4" /> Delete
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setSources(sources.filter(s => s.id !== editingSourceId))
+                                                    setEditingSourceId(null)
+                                                }}
+                                                className="text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg font-medium flex items-center gap-2 border border-transparent hover:border-red-100"
+                                            >
+                                                <Trash2 className="w-4 h-4" /> Delete
+                                            </button>
+
+                                            <button
+                                                onClick={() => {
+                                                    const s = sources.find(x => x.id === editingSourceId)
+                                                    if (!s) return
+
+                                                    // Split in half
+                                                    const halfH = s.crop.height / 2
+
+                                                    const updated = { ...s, crop: { ...s.crop, height: halfH }, title: s.title + ' (1)' }
+                                                    const newSrc: Source = {
+                                                        id: crypto.randomUUID(),
+                                                        title: s.title + ' (2)',
+                                                        pageIndex: s.pageIndex,
+                                                        crop: { ...s.crop, y: s.crop.y + halfH, height: halfH }
+                                                    }
+
+                                                    setSources(prev => {
+                                                        const idx = prev.findIndex(p => p.id === editingSourceId)
+                                                        const next = [...prev]
+                                                        next[idx] = updated
+                                                        next.splice(idx + 1, 0, newSrc)
+                                                        return next
+                                                    })
+                                                }}
+                                                className="text-blue-600 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-lg font-medium flex items-center gap-2"
+                                                title="Split detect region into two halves"
+                                            >
+                                                <ScanLine className="w-4 h-4" /> Split Box
+                                            </button>
+                                        </div>
+
                                         <button
                                             onClick={() => setEditingSourceId(null)}
                                             className="bg-blue-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-blue-700 shadow-md transform transition active:scale-95"
