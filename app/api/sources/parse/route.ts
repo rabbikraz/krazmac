@@ -8,99 +8,47 @@ export async function POST(request: NextRequest) {
         const file = formData.get('file') as File
 
         if (!file) {
-            return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+            return NextResponse.json({ error: 'No file' }, { status: 400 })
         }
-
-        console.log('Processing file:', file.name, 'Type:', file.type, 'Size:', file.size)
 
         const bytes = await file.arrayBuffer()
-        const base64Data = Buffer.from(bytes).toString('base64')
+        const base64 = Buffer.from(bytes).toString('base64')
+        const mimeType = file.type.startsWith('image/') ? file.type : 'image/png'
 
-        let mimeType = file.type
-        if (!mimeType.startsWith('image/') && mimeType !== 'application/pdf') {
-            mimeType = 'image/png'
-        }
-
-        // Use Gemini to identify source regions in the image
-        console.log('Asking Gemini to identify source regions...')
-        const regions = await identifySourceRegions(base64Data, mimeType)
-
-        if (regions.length === 0) {
-            // If no regions found, treat the whole image as one source
-            return NextResponse.json({
-                success: true,
-                rawText: '',
-                sources: [{
-                    id: crypto.randomUUID(),
-                    title: 'Source 1',
-                    text: '',
-                    type: 'image',
-                    imageData: `data:${mimeType};base64,${base64Data}`,
-                    cropBox: null // Full image
-                }],
-                method: 'image_regions'
-            })
-        }
-
-        // Return the regions - client will handle cropping
-        const sources = regions.map((region, i) => ({
-            id: crypto.randomUUID(),
-            title: region.title || `Source ${i + 1}`,
-            text: region.description || '',
-            type: 'image',
-            imageData: `data:${mimeType};base64,${base64Data}`,
-            cropBox: region.box, // { x, y, width, height } as percentages
-            rotation: region.rotation || 0
-        }))
+        // Ask Gemini to find source regions
+        const regions = await findSourceRegions(base64, mimeType)
 
         return NextResponse.json({
             success: true,
-            rawText: '',
-            sources,
-            method: 'image_regions',
-            fullImage: `data:${mimeType};base64,${base64Data}`
+            regions,
+            image: `data:${mimeType};base64,${base64}`
         })
     } catch (error) {
-        console.error('Processing error:', error)
-        return NextResponse.json({
-            error: 'Failed: ' + (error as Error).message
-        }, { status: 500 })
+        console.error('Error:', error)
+        return NextResponse.json({ error: String(error) }, { status: 500 })
     }
 }
 
-interface SourceRegion {
-    title: string
-    description: string
-    box: { x: number; y: number; width: number; height: number } // percentages 0-100
-    rotation: number // 0, 90, 180, 270
-}
+async function findSourceRegions(base64: string, mimeType: string) {
+    const prompt = `This is a Hebrew source sheet with multiple sources.
 
-async function identifySourceRegions(base64Data: string, mimeType: string): Promise<SourceRegion[]> {
-    try {
-        const prompt = `Look at this Hebrew source sheet. Sources are typically separated by:
-- Whitespace or gaps
-- Headers or titles
-- Numbers (1, 2, 3 or א, ב, ג)
-- Different font styles
-- Horizontal lines
+Find each source and give me its bounding box as percentages (0-100).
+Sources are separated by whitespace, headers, numbers, or lines.
 
-Identify the RECTANGULAR REGION that contains each source. Even if there's no visible box, identify where each source starts and ends.
-
-For EACH source, provide:
-1. title: What the source appears to be (רש"י, גמרא, רמב"ם, etc.) or "Source 1" if unclear
-2. description: Brief note about the content
-3. box: Rectangle containing this source as percentages (x, y from top-left, width, height)
-4. rotation: If text needs rotation to read (0, 90, 180, 270)
-
-Return ONLY a JSON array, no other text:
+Return ONLY a JSON array like this:
 [
-  {"title": "רש\"י", "description": "Commentary", "box": {"x": 0, "y": 0, "width": 100, "height": 25}, "rotation": 0},
-  {"title": "גמרא", "description": "Talmud passage", "box": {"x": 0, "y": 26, "width": 100, "height": 30}, "rotation": 0}
+  {"title": "Source name or number", "y": 0, "height": 25},
+  {"title": "Next source", "y": 26, "height": 30}
 ]
 
-Be generous with region sizes - include headers and some margin. Sources usually stack vertically on the page.`
+y = where this source STARTS (% from top)
+height = how TALL this source is (%)
 
-        const response = await fetch(
+Sources go full width, so no x/width needed.
+Return [] if you can't identify sources.`
+
+    try {
+        const res = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
@@ -109,35 +57,25 @@ Be generous with region sizes - include headers and some margin. Sources usually
                     contents: [{
                         parts: [
                             { text: prompt },
-                            { inline_data: { mime_type: mimeType, data: base64Data } }
+                            { inline_data: { mime_type: mimeType, data: base64 } }
                         ]
                     }],
-                    generationConfig: { temperature: 0.1, maxOutputTokens: 4000 }
+                    generationConfig: { temperature: 0.1 }
                 })
             }
         )
 
-        if (!response.ok) {
-            console.error('Gemini API error:', response.status)
-            return []
+        const data = await res.json() as any
+        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+
+        // Extract JSON from response
+        if (text.includes('```')) {
+            const match = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+            if (match) text = match[1]
         }
 
-        const data = await response.json() as any
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-        console.log('Gemini regions response:', content.substring(0, 200))
-
-        // Extract JSON
-        let jsonStr = content.trim()
-        if (jsonStr.includes('```')) {
-            const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
-            if (match) jsonStr = match[1].trim()
-        }
-
-        const parsed = JSON.parse(jsonStr)
-        return Array.isArray(parsed) ? parsed : []
-    } catch (e) {
-        console.error('Region identification error:', e)
+        return JSON.parse(text.trim())
+    } catch {
         return []
     }
 }

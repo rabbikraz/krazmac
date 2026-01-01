@@ -1,616 +1,248 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Upload, FileText, Loader2, Check, Trash2, Save, BookOpen, ChevronDown, Plus, X, Edit2 } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { Upload, Loader2, Trash2, Plus } from 'lucide-react'
 
-interface ParsedSource {
-    id: string
-    text: string
-    type: 'hebrew' | 'english' | 'image'
-    title?: string
-    imageData?: string // base64 image data
-    cropBox?: { x: number; y: number; width: number; height: number } | null
-    rotation?: number
-}
-
-interface Shiur {
+interface Source {
     id: string
     title: string
+    imageUrl: string  // Full page image
+    cropY: number     // % from top
+    cropHeight: number // % height
 }
 
 export default function SourceManager() {
     const [file, setFile] = useState<File | null>(null)
     const [isProcessing, setIsProcessing] = useState(false)
-    const [sources, setSources] = useState<ParsedSource[]>([])
-    const [rawText, setRawText] = useState('')
-    const [shiurim, setShiurim] = useState<Shiur[]>([])
-    const [selectedShiur, setSelectedShiur] = useState<string>('')
-    const [editingId, setEditingId] = useState<string | null>(null)
-
-    // Fetch shiurim for assignment
-    useEffect(() => {
-        fetchShiurim()
-    }, [])
-
-    const fetchShiurim = async () => {
-        try {
-            const res = await fetch('/api/shiurim')
-            const data = await res.json() as Shiur[]
-            setShiurim(data)
-        } catch (e) {
-            console.error('Failed to fetch shiurim:', e)
-        }
-    }
-
-    const isValidFile = (f: File) => {
-        return f.type === 'application/pdf' || f.type.startsWith('image/')
-    }
-
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const selectedFile = e.target.files?.[0]
-        if (selectedFile && isValidFile(selectedFile)) {
-            setFile(selectedFile)
-            setSources([])
-            setRawText('')
-        }
-    }
+    const [sources, setSources] = useState<Source[]>([])
+    const [pageImage, setPageImage] = useState<string>('')
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault()
-        const droppedFile = e.dataTransfer.files[0]
-        if (droppedFile && isValidFile(droppedFile)) {
-            setFile(droppedFile)
+        const f = e.dataTransfer.files[0]
+        if (f && (f.type === 'application/pdf' || f.type.startsWith('image/'))) {
+            setFile(f)
             setSources([])
-            setRawText('')
         }
     }, [])
 
     const processFile = async () => {
         if (!file) return
-
         setIsProcessing(true)
 
         try {
-            // Send file directly to API - Claude supports PDFs natively
-            console.log('Sending file to Claude for processing...')
+            // If PDF, convert to image first
+            let imageFile = file
+            if (file.type === 'application/pdf') {
+                imageFile = await pdfToImage(file)
+            }
 
+            // Send to API
             const formData = new FormData()
-            formData.append('file', file, file.name)
+            formData.append('file', imageFile)
 
             const res = await fetch('/api/sources/parse', {
                 method: 'POST',
                 body: formData
             })
 
-            const data = await res.json() as {
-                success: boolean
-                rawText: string
-                sources: ParsedSource[]
-                error?: string
-                method?: string
-            }
+            const data = await res.json() as { success: boolean; regions: any[]; image: string; error?: string }
 
             if (data.success) {
-                console.log(`Processed with ${data.method}, found ${data.sources?.length || 0} sources`)
-                setRawText(data.rawText || '')
-                setSources(data.sources || [])
-
-                if (!data.sources?.length) {
-                    alert('No sources found. Try the manual paste option below.')
-                }
+                setPageImage(data.image)
+                setSources(data.regions.map((r: any, i: number) => ({
+                    id: crypto.randomUUID(),
+                    title: r.title || `Source ${i + 1}`,
+                    imageUrl: data.image,
+                    cropY: r.y || 0,
+                    cropHeight: r.height || 20
+                })))
             } else {
-                console.error('API error:', data.error)
-                alert('Failed to process: ' + (data.error || 'Unknown error'))
+                alert(data.error || 'Failed to process')
             }
         } catch (e) {
-            console.error('Processing error:', e)
-            alert('Processing failed. Try the manual paste option.')
+            alert('Error: ' + e)
         } finally {
             setIsProcessing(false)
         }
     }
 
-    // Extract embedded text from PDF using pdf.js (works for digital/searchable PDFs)
-    const extractTextFromPdf = async (pdfFile: File): Promise<string> => {
-        try {
-            const pdfjsLib = await import('pdfjs-dist')
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-
-            const arrayBuffer = await pdfFile.arrayBuffer()
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-
-            let fullText = ''
-
-            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                const page = await pdf.getPage(pageNum)
-                const textContent = await page.getTextContent()
-
-                // Extract text items and join them
-                const pageText = textContent.items
-                    .map((item: any) => item.str)
-                    .join(' ')
-
-                fullText += pageText + '\n\n'
-            }
-
-            return fullText.trim()
-        } catch (e) {
-            console.error('PDF text extraction failed:', e)
-            return ''
-        }
-    }
-
-    // Convert PDF to images using pdf.js (runs in browser)
-    const convertPdfToImages = async (pdfFile: File): Promise<Blob[]> => {
+    // Convert PDF to image using canvas
+    const pdfToImage = async (pdfFile: File): Promise<File> => {
         const pdfjsLib = await import('pdfjs-dist')
-        // Use local worker file from public folder
         pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
-        const arrayBuffer = await pdfFile.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        const buffer = await pdfFile.arrayBuffer()
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise
+        const page = await pdf.getPage(1)
 
-        const images: Blob[] = []
-        const scale = 2.0 // High quality for OCR
+        const scale = 2
+        const viewport = page.getViewport({ scale })
+        const canvas = document.createElement('canvas')
+        canvas.width = viewport.width
+        canvas.height = viewport.height
 
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-            const page = await pdf.getPage(pageNum)
-            const viewport = page.getViewport({ scale })
+        await page.render({
+            canvasContext: canvas.getContext('2d')!,
+            viewport,
+            canvas
+        } as any).promise
 
-            const canvas = document.createElement('canvas')
-            canvas.width = viewport.width
-            canvas.height = viewport.height
-
-            // Use 'any' type to bypass TypeScript error for missing canvas property
-            const context = canvas.getContext('2d')!
-            await page.render({ canvasContext: context, viewport, canvas } as any).promise
-
-            const blob = await new Promise<Blob>((resolve) => {
-                canvas.toBlob((b) => resolve(b!), 'image/png', 0.95)
-            })
-            images.push(blob)
-        }
-
-        return images
+        return new Promise(resolve => {
+            canvas.toBlob(blob => {
+                resolve(new File([blob!], 'page.png', { type: 'image/png' }))
+            }, 'image/png')
+        })
     }
 
-    const addManualSource = () => {
-        const newSource: ParsedSource = {
-            id: crypto.randomUUID(),
-            text: '',
-            type: 'hebrew',
-            title: `Source ${sources.length + 1}`
-        }
-        setSources([...sources, newSource])
-        setEditingId(newSource.id)
-    }
-
-    const updateSource = (id: string, updates: Partial<ParsedSource>) => {
-        setSources(sources.map(s => s.id === id ? { ...s, ...updates } : s))
-    }
-
-    const removeSource = (id: string) => {
+    const deleteSource = (id: string) => {
         setSources(sources.filter(s => s.id !== id))
     }
 
-    const moveSource = (index: number, direction: 'up' | 'down') => {
-        const newSources = [...sources]
-        const newIndex = direction === 'up' ? index - 1 : index + 1
-        if (newIndex < 0 || newIndex >= sources.length) return
-        [newSources[index], newSources[newIndex]] = [newSources[newIndex], newSources[index]]
-        setSources(newSources)
-    }
-
-    const generateHTML = () => {
-        const html = sources.map((source, i) => {
-            const dir = source.type === 'hebrew' ? 'rtl' : 'ltr'
-            const align = source.type === 'hebrew' ? 'right' : 'left'
-            return `
-<div class="source" style="margin-bottom: 24px; padding: 16px; border-radius: 8px; background: #f8f9fa; border-left: 4px solid #1a365d;">
-  ${source.title ? `<h3 style="margin: 0 0 8px 0; color: #1a365d; font-size: 14px; font-weight: 600;">${source.title}</h3>` : ''}
-  <p style="margin: 0; direction: ${dir}; text-align: ${align}; font-family: 'David Libre', 'Times New Roman', serif; font-size: 18px; line-height: 1.8;">
-    ${source.text}
-  </p>
-</div>`
-        }).join('\n')
-
-        return `<div class="sources-container" style="font-family: system-ui, sans-serif;">\n${html}\n</div>`
-    }
-
-    const copyHTML = () => {
-        navigator.clipboard.writeText(generateHTML())
-        alert('HTML copied to clipboard!')
-    }
-
-    const saveToShiur = async () => {
-        if (!selectedShiur) {
-            alert('Please select a shiur')
-            return
-        }
-
-        const html = generateHTML()
-
-        try {
-            const res = await fetch(`/api/shiurim/${selectedShiur}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sourceDoc: html })
-            })
-
-            if (res.ok) {
-                alert('Sources saved to shiur!')
-            } else {
-                alert('Failed to save sources')
-            }
-        } catch (e) {
-            alert('Error saving sources')
-        }
+    const addManualSource = () => {
+        if (!pageImage) return alert('Upload a file first')
+        setSources([...sources, {
+            id: crypto.randomUUID(),
+            title: `Source ${sources.length + 1}`,
+            imageUrl: pageImage,
+            cropY: 0,
+            cropHeight: 100
+        }])
     }
 
     return (
-        <div className="space-y-8">
-            {/* Upload Section */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Upload className="w-5 h-5 text-primary" />
-                    Upload Source Sheet
-                </h3>
+        <div className="max-w-4xl mx-auto p-6 space-y-6">
+            <h1 className="text-2xl font-bold">Source Manager</h1>
 
-                <div
-                    onDrop={handleDrop}
-                    onDragOver={(e) => e.preventDefault()}
-                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer
-            ${file ? 'border-green-300 bg-green-50' : 'border-gray-300 hover:border-primary hover:bg-gray-50'}`}
-                    onClick={() => document.getElementById('pdf-input')?.click()}
-                >
-                    <input
-                        id="pdf-input"
-                        type="file"
-                        accept=".pdf,image/*"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                    />
-
-                    {file ? (
-                        <div className="flex items-center justify-center gap-3">
-                            <FileText className="w-8 h-8 text-green-600" />
-                            <div className="text-left">
-                                <p className="font-medium text-green-800">{file.name}</p>
-                                <p className="text-sm text-green-600">{(file.size / 1024).toFixed(1)} KB</p>
-                            </div>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                                className="ml-4 p-1 hover:bg-green-100 rounded"
-                            >
-                                <X className="w-5 h-5 text-green-600" />
-                            </button>
-                        </div>
-                    ) : (
-                        <div>
-                            <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                            <p className="text-gray-600 font-medium">Drop your PDF or image here</p>
-                            <p className="text-sm text-gray-500 mt-1">Supports PDFs and images (JPG, PNG)</p>
-                        </div>
-                    )}
-                </div>
-
-                {file && (
-                    <div className="mt-4">
-                        <button
-                            onClick={processFile}
-                            disabled={isProcessing}
-                            className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                    Extracting text with Hebrew OCR...
-                                </>
-                            ) : (
-                                <>
-                                    <FileText className="w-5 h-5" />
-                                    Extract Sources (Hebrew OCR)
-                                </>
-                            )}
-                        </button>
-                        <p className="text-xs text-gray-500 mt-2 text-center">
-                            Uses Google Cloud Vision with Hebrew language support
-                        </p>
-                    </div>
-                )}
-
-                {/* Paste Text Section - More Prominent */}
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-                        📋 Paste Text Directly (Best for Rashi Script)
-                    </h4>
-                    <p className="text-xs text-blue-700 mb-3">
-                        OCR struggles with Rashi script. For best results, copy text from your source and paste below.
-                        <br />
-                        <strong>Tip:</strong> Insert <code className="bg-blue-100 px-1 rounded">---</code> on its own line to separate sources.
-                    </p>
-                    <textarea
-                        placeholder="Paste your source text here...
-
-Use --- on a new line to separate sources. Example:
-
-רש״י על בראשית א:א
-בראשית - בשביל התורה שנקראת ראשית...
----
-תוספות ד״ה בראשית
-מקשים התוספות על רש״י..."
-                        className="w-full h-64 p-3 border border-blue-300 rounded-lg font-serif text-base resize-none focus:ring-2 focus:ring-primary bg-white"
-                        dir="auto"
-                        onChange={(e) => setRawText(e.target.value)}
-                        value={rawText}
-                    />
-                    <button
-                        onClick={() => {
-                            if (rawText.trim()) {
-                                // Split by --- or double newlines
-                                const blocks = rawText.split(/(?:^|\n)---(?:\n|$)|\n{2,}/).filter(b => b.trim().length > 5)
-                                const parsed = blocks.map((block, i) => {
-                                    const trimmed = block.trim()
-                                    const hebrewChars = (trimmed.match(/[\u0590-\u05FF]/g) || []).length
-                                    const total = trimmed.length
-                                    const lines = trimmed.split('\n')
-                                    const firstLine = lines[0].trim()
-
-                                    return {
-                                        id: crypto.randomUUID(),
-                                        text: lines.slice(1).join('\n').trim() || trimmed,
-                                        type: (hebrewChars / total > 0.3 ? 'hebrew' : 'english') as 'hebrew' | 'english',
-                                        title: firstLine.length < 80 ? firstLine : `Source ${i + 1}`
-                                    }
-                                })
-                                setSources(parsed)
-                            }
-                        }}
-                        disabled={!rawText.trim()}
-                        className="w-full mt-3 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    >
-                        Parse Text into Sources
-                    </button>
-                </div>
+            {/* Upload Area */}
+            <div
+                onDrop={handleDrop}
+                onDragOver={e => e.preventDefault()}
+                className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 transition-colors"
+            >
+                <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-600 mb-2">Drop PDF or image here</p>
+                <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={e => e.target.files?.[0] && setFile(e.target.files[0])}
+                    className="hidden"
+                    id="file-input"
+                />
+                <label htmlFor="file-input" className="text-blue-600 hover:underline cursor-pointer">
+                    or click to browse
+                </label>
+                {file && <p className="mt-2 text-sm text-gray-500">Selected: {file.name}</p>}
             </div>
 
-            {/* Manual Add Section */}
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-primary" />
-                    Sources ({sources.length})
-                </h3>
+            {/* Process Button */}
+            {file && (
                 <button
-                    onClick={addManualSource}
-                    className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-lg hover:bg-primary/5 flex items-center gap-2"
+                    onClick={processFile}
+                    disabled={isProcessing}
+                    className="w-full py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                    <Plus className="w-4 h-4" />
-                    Add Manually
+                    {isProcessing ? (
+                        <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Processing...
+                        </>
+                    ) : (
+                        'Extract Sources'
+                    )}
                 </button>
-            </div>
+            )}
 
             {/* Sources List */}
-            {
-                sources.length > 0 && (
-                    <div className="space-y-4">
-                        {sources.map((source, index) => (
+            {sources.length > 0 && (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-semibold">{sources.length} Sources Found</h2>
+                        <button
+                            onClick={addManualSource}
+                            className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                        >
+                            <Plus className="w-4 h-4" /> Add manually
+                        </button>
+                    </div>
+
+                    {sources.map((source, i) => (
+                        <div key={source.id} className="bg-white border rounded-xl overflow-hidden shadow-sm">
+                            {/* Title */}
+                            <div className="flex items-center justify-between p-3 bg-gray-50 border-b">
+                                <input
+                                    type="text"
+                                    value={source.title}
+                                    onChange={e => {
+                                        const updated = [...sources]
+                                        updated[i].title = e.target.value
+                                        setSources(updated)
+                                    }}
+                                    className="font-medium bg-transparent border-none focus:outline-none"
+                                    placeholder="Source title..."
+                                />
+                                <button onClick={() => deleteSource(source.id)} className="text-red-500 hover:text-red-700">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            {/* Cropped Image */}
                             <div
-                                key={source.id}
-                                className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow"
+                                className="relative overflow-hidden"
+                                style={{
+                                    height: '200px'
+                                }}
                             >
-                                <div className="flex items-start gap-4">
-                                    <div className="flex-shrink-0 flex flex-col items-center gap-1">
-                                        <span className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center font-bold text-sm">
-                                            {index + 1}
-                                        </span>
-                                        <div className="flex flex-col gap-0.5">
-                                            <button
-                                                onClick={() => moveSource(index, 'up')}
-                                                disabled={index === 0}
-                                                className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                                            >
-                                                ▲
-                                            </button>
-                                            <button
-                                                onClick={() => moveSource(index, 'down')}
-                                                disabled={index === sources.length - 1}
-                                                className="text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                                            >
-                                                ▼
-                                            </button>
-                                        </div>
-                                    </div>
+                                <img
+                                    src={source.imageUrl}
+                                    alt={source.title}
+                                    className="absolute w-full"
+                                    style={{
+                                        top: `-${source.cropY}%`,
+                                        height: `${100 / (source.cropHeight / 100)}%`
+                                    }}
+                                />
+                            </div>
 
-                                    <div className="flex-1 space-y-3">
-                                        {/* Title */}
-                                        <input
-                                            type="text"
-                                            value={source.title || ''}
-                                            onChange={(e) => updateSource(source.id, { title: e.target.value })}
-                                            placeholder="Source title (e.g., רמב״ם הלכות תשובה פ״א ה״א)"
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-primary focus:border-primary"
-                                        />
-
-                                        {/* Content */}
-                                        {source.type === 'image' && source.imageData ? (
-                                            <div className="relative overflow-hidden rounded-lg bg-gray-50 border border-gray-200">
-                                                {source.cropBox ? (
-                                                    <div
-                                                        className="relative"
-                                                        style={{
-                                                            width: '100%',
-                                                            paddingBottom: `${(source.cropBox.height / source.cropBox.width) * 100}%`
-                                                        }}
-                                                    >
-                                                        <img
-                                                            src={source.imageData}
-                                                            alt={source.title || 'Source'}
-                                                            className="absolute"
-                                                            style={{
-                                                                width: `${100 / (source.cropBox.width / 100)}%`,
-                                                                left: `${-source.cropBox.x / (source.cropBox.width / 100)}%`,
-                                                                top: `${-source.cropBox.y / (source.cropBox.height / 100)}%`,
-                                                                transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined
-                                                            }}
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <img
-                                                        src={source.imageData}
-                                                        alt={source.title || 'Source'}
-                                                        className="w-full"
-                                                        style={{
-                                                            transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined
-                                                        }}
-                                                    />
-                                                )}
-                                            </div>
-                                        ) : editingId === source.id ? (
-                                            <textarea
-                                                value={source.text}
-                                                onChange={(e) => updateSource(source.id, { text: e.target.value })}
-                                                className="w-full h-40 px-3 py-2 border border-gray-200 rounded-lg font-serif text-lg leading-relaxed resize-none focus:ring-2 focus:ring-primary"
-                                                dir="auto"
-                                                autoFocus
-                                                onBlur={() => setEditingId(null)}
-                                            />
-                                        ) : (
-                                            <div
-                                                onClick={() => setEditingId(source.id)}
-                                                className={`p-4 bg-gray-50 rounded-lg font-serif text-lg leading-relaxed cursor-text min-h-[80px] hover:bg-gray-100 transition-colors
-                        ${source.type === 'hebrew' ? 'text-right' : 'text-left'}`}
-                                                dir={source.type === 'hebrew' ? 'rtl' : 'ltr'}
-                                            >
-                                                {source.text || <span className="text-gray-400 italic">Click to add text...</span>}
-                                            </div>
-                                        )}
-
-                                        {/* Type Toggle & Actions */}
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => updateSource(source.id, { type: 'hebrew' })}
-                                                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors
-                          ${source.type === 'hebrew' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                                                >
-                                                    עברית
-                                                </button>
-                                                <button
-                                                    onClick={() => updateSource(source.id, { type: 'english' })}
-                                                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors
-                          ${source.type === 'english' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                                                >
-                                                    English
-                                                </button>
-                                                <button
-                                                    onClick={async () => {
-                                                        const firstLine = source.text.split('\n')[0].replace(/[0-9.]/g, '').trim().substring(0, 100)
-                                                        if (!firstLine) return alert('No text to identify')
-
-                                                        try {
-                                                            const res = await fetch(`https://www.sefaria.org/api/name/${encodeURIComponent(firstLine)}`)
-                                                            const data = await res.json() as any
-                                                            if (data.is_ref || data.is_book) {
-                                                                const newTitle = data.primary_category ? `${data.primary_category} - ${firstLine}` : (data.ref || firstLine)
-                                                                updateSource(source.id, { title: newTitle })
-                                                                alert(`Identified as: ${newTitle}`)
-                                                            } else {
-                                                                alert(`Could not identify: "${firstLine}". Try editing the text start to be a standard citation.`)
-                                                            }
-                                                        } catch (e) {
-                                                            alert('Error checking Sefaria')
-                                                        }
-                                                    }}
-                                                    className="px-3 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors ml-2"
-                                                >
-                                                    Identify (Sefaria)
-                                                </button>
-                                            </div>
-
-                                            <button
-                                                onClick={() => removeSource(source.id)}
-                                                className="text-red-500 hover:text-red-700 p-1"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
+                            {/* Crop Adjusters */}
+                            <div className="p-3 bg-gray-50 border-t space-y-2">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <label className="w-16">Start %:</label>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        value={source.cropY}
+                                        onChange={e => {
+                                            const updated = [...sources]
+                                            updated[i].cropY = Number(e.target.value)
+                                            setSources(updated)
+                                        }}
+                                        className="flex-1"
+                                    />
+                                    <span className="w-10">{source.cropY}%</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <label className="w-16">Height %:</label>
+                                    <input
+                                        type="range"
+                                        min="5"
+                                        max="100"
+                                        value={source.cropHeight}
+                                        onChange={e => {
+                                            const updated = [...sources]
+                                            updated[i].cropHeight = Number(e.target.value)
+                                            setSources(updated)
+                                        }}
+                                        className="flex-1"
+                                    />
+                                    <span className="w-10">{source.cropHeight}%</span>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )
-            }
-
-            {/* Empty State */}
-            {
-                sources.length === 0 && !file && (
-                    <div className="text-center py-12 text-gray-500">
-                        <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg font-medium">No sources yet</p>
-                        <p className="text-sm">Upload a PDF or add sources manually</p>
-                    </div>
-                )
-            }
-
-            {/* Actions */}
-            {
-                sources.length > 0 && (
-                    <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                            <Save className="w-5 h-5 text-primary" />
-                            Save Sources
-                        </h3>
-
-                        <div className="grid md:grid-cols-2 gap-4">
-                            {/* Assign to Shiur */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-700">Assign to Shiur</label>
-                                <select
-                                    value={selectedShiur}
-                                    onChange={(e) => setSelectedShiur(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary"
-                                >
-                                    <option value="">Select a shiur...</option>
-                                    {shiurim.map(s => (
-                                        <option key={s.id} value={s.id}>{s.title}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={saveToShiur}
-                                    disabled={!selectedShiur}
-                                    className="w-full py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    <Save className="w-4 h-4" />
-                                    Save to Shiur
-                                </button>
-                            </div>
-
-                            {/* Copy HTML */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-700">Export</label>
-                                <button
-                                    onClick={copyHTML}
-                                    className="w-full py-2 border border-primary text-primary rounded-lg font-medium hover:bg-primary/5 flex items-center justify-center gap-2"
-                                >
-                                    <FileText className="w-4 h-4" />
-                                    Copy as HTML
-                                </button>
-                                <p className="text-xs text-gray-500">Copy formatted HTML to use elsewhere</p>
-                            </div>
                         </div>
-
-                        {/* Preview */}
-                        <details className="mt-4">
-                            <summary className="cursor-pointer text-sm font-medium text-primary hover:text-primary/80">
-                                Preview HTML Output
-                            </summary>
-                            <div className="mt-3 p-4 bg-gray-50 rounded-lg overflow-auto max-h-96">
-                                <div dangerouslySetInnerHTML={{ __html: generateHTML() }} />
-                            </div>
-                        </details>
-                    </div>
-                )
-            }
-        </div >
+                    ))}
+                </div>
+            )}
+        </div>
     )
 }
