@@ -18,7 +18,6 @@ export default function SourceManager() {
     const [sources, setSources] = useState<Source[]>([])
     const [pageImages, setPageImages] = useState<string[]>([])
 
-    // Simple state: Just one active source being edited (optional)
     const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
 
     const handleDrop = useCallback((e: React.DragEvent) => {
@@ -26,7 +25,7 @@ export default function SourceManager() {
         const f = e.dataTransfer.files[0]
         if (f) {
             setFile(f)
-            processFile(f) // Auto-start
+            processFile(f)
         }
     }, [])
 
@@ -52,7 +51,6 @@ export default function SourceManager() {
                 const imageUrl = await fileToBase64(images[i])
                 newPageImages.push(imageUrl)
 
-                // 3. AI Analysis
                 const formData = new FormData()
                 formData.append('file', images[i])
 
@@ -161,7 +159,19 @@ export default function SourceManager() {
                     </div>
                     <h3 className="text-lg font-semibold text-gray-900">Upload Source Sheet</h3>
                     <p className="text-gray-500 mt-2">PDFs or Images supported</p>
-                    <input id="uploader" type="file" className="hidden" accept=".pdf,image/*" onChange={e => e.target.files?.[0] && setFile(e.target.files[0]) && processFile(e.target.files[0])} />
+                    <input
+                        id="uploader"
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,image/*"
+                        onChange={e => {
+                            const f = e.target.files?.[0]
+                            if (f) {
+                                setFile(f)
+                                processFile(f)
+                            }
+                        }}
+                    />
                 </div>
             )}
 

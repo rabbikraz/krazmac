@@ -42,25 +42,27 @@ async function findSourceRegions(base64: string, mimeType: string) {
 
     const prompt = `You are a Layout Analysis AI specialized in Hebrew Text.
 
-Task: Detect the exact bounding box for EACH distinct source/paragraph on this page.
-Sources are separated by:
-- Numbering (1, 2, 3.. or א, ב, ג..)
-- Headers (Bold text like "רש\"י")
-- Spacing (Vertical gaps)
-- Horizontal lines
+CRITICAL INSTRUCTION:
+Do NOT return the whole page as one source. 
+This page contains MULTIPLE distinct source citations (Rashi, Gemara, etc.).
+You MUST split the text into separate parts.
 
-Return a JSON array of objects.
-Each object must have:
-- title: A short label (e.g. "Rashi", "Source 1")
-- box_2d: [ymin, xmin, ymax, xmax]
-  - ymin, xmin, ymax, xmax are integers from 0 to 1000 (normalized coordinates).
-  - 0,0 is top-left. 1000,1000 is bottom-right.
-  - TIGHTLY crop the text block.
+Look for:
+- Numbering (1, 2, 3...)
+- Bold Headers (Title lines)
+- New Paragraphs with hanging indents
+- Vertical whitespace gaps
 
-Example:
+Task:
+Return a JSON array of bounding boxes ([ymin, xmin, ymax, xmax] 0-1000).
+Find EVERY distinctive text block.
+If you are unsure, split by paragraphs.
+
+Example Output:
 [
-  { "title": "Source 1", "box_2d": [10, 50, 250, 950] },
-  { "title": "Source 2", "box_2d": [260, 50, 400, 950] }
+  { "title": "Source 1", "box_2d": [50, 50, 200, 950] },
+  { "title": "Source 2", "box_2d": [210, 50, 450, 950] },
+  { "title": "Source 3", "box_2d": [460, 50, 800, 950] }
 ]
 
 Return ONLY valid JSON.`
