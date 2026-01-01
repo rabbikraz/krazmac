@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
-import { Upload, Loader2, RefreshCw, X, Save, Plus, Trash2, Layout, ScanLine } from 'lucide-react'
-import ReactCrop, { Crop, PercentCrop } from 'react-image-crop'
+import { useState, useCallback } from 'react'
+import { Upload, Loader2, RefreshCw, X, Save, Trash2, ScanLine } from 'lucide-react'
+import ReactCrop, { PercentCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 
 interface Source {
@@ -17,6 +17,10 @@ export default function SourceManager() {
     const [isProcessing, setIsProcessing] = useState(false)
     const [sources, setSources] = useState<Source[]>([])
     const [pageImages, setPageImages] = useState<string[]>([])
+
+    // Quick Slice State
+    const [sliceModePageId, setSliceModePageId] = useState<number | null>(null)
+    const [hoverLineY, setHoverLineY] = useState<number | null>(null)
 
     // Simple state: Just one active source being edited (optional)
     const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
@@ -34,6 +38,7 @@ export default function SourceManager() {
         setIsProcessing(true)
         setSources([])
         setPageImages([])
+        setSliceModePageId(null)
 
         try {
             // 1. Convert PDF to Images
@@ -67,7 +72,7 @@ export default function SourceManager() {
 
                             newSources.push({
                                 id: crypto.randomUUID(),
-                                title: r.title || `Source ${newSources.length + 1}`,
+                                title: r.title || `Source ${idx + 1}`,
                                 pageIndex: i,
                                 crop: {
                                     unit: '%',
@@ -97,6 +102,57 @@ export default function SourceManager() {
     const onUpdateCrop = (id: string, c: PercentCrop) => {
         setSources(sources.map(s => s.id === id ? { ...s, crop: c } : s))
     }
+
+    // --- Slice Logic ---
+    const handleSliceClick = (e: React.MouseEvent<HTMLDivElement>, pageIndex: number, imgElement: HTMLImageElement) => {
+        if (sliceModePageId !== pageIndex) return
+
+        const rect = imgElement.getBoundingClientRect()
+        const clickY = e.clientY - rect.top
+        const percentageY = (clickY / rect.height) * 100
+
+        // Find which source we are clicking inside
+        const targetSource = sources.find(s =>
+            s.pageIndex === pageIndex &&
+            percentageY >= s.crop.y &&
+            percentageY <= (s.crop.y + s.crop.height)
+        )
+
+        if (targetSource) {
+            // Split it logic
+            const oldHeight = targetSource.crop.height
+            const splitRelativeY = percentageY - targetSource.crop.y // Where inside the box did we click?
+
+            // Validate min height (e.g. 2%)
+            if (splitRelativeY < 2 || (oldHeight - splitRelativeY) < 2) return
+
+            const updatedTop = {
+                ...targetSource,
+                crop: { ...targetSource.crop, height: splitRelativeY },
+                title: targetSource.title + ' (Top)'
+            }
+
+            const newBottom: Source = {
+                id: crypto.randomUUID(),
+                title: targetSource.title + ' (Bottom)',
+                pageIndex: pageIndex,
+                crop: {
+                    ...targetSource.crop,
+                    y: targetSource.crop.y + splitRelativeY,
+                    height: oldHeight - splitRelativeY
+                }
+            }
+
+            setSources(prev => {
+                const idx = prev.findIndex(p => p.id === targetSource.id)
+                const next = [...prev]
+                next[idx] = updatedTop
+                next.splice(idx + 1, 0, newBottom)
+                return next
+            })
+        }
+    }
+
 
     // --- Helpers ---
     const pdfToImages = async (pdfFile: File): Promise<File[]> => {
@@ -189,15 +245,44 @@ export default function SourceManager() {
             {!isProcessing && pageImages.length > 0 && (
                 <div className="space-y-8 relative z-0">
                     {pageImages.map((img, pageIdx) => (
-                        <div key={pageIdx} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="bg-gray-50 px-3 py-2 border-b flex justify-between items-center">
-                                <span className="font-semibold text-gray-700 text-xs">Page {pageIdx + 1}</span>
-                                <span className="text-[10px] text-gray-400 uppercase tracking-wider">{sources.filter(s => s.pageIndex === pageIdx).length} sources</span>
+                        <div key={pageIdx} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden relative">
+                            {/* Toolbar for Page */}
+                            <div className="bg-gray-50 px-3 py-2 border-b flex justify-between items-center sticky top-0 z-20">
+                                <div className="flex items-center gap-4">
+                                    <span className="font-semibold text-gray-700 text-xs">Page {pageIdx + 1}</span>
+                                    <span className="text-[10px] text-gray-400 uppercase tracking-wider">{sources.filter(s => s.pageIndex === pageIdx).length} sources</span>
+                                </div>
+                                <button
+                                    onClick={() => setSliceModePageId(sliceModePageId === pageIdx ? null : pageIdx)}
+                                    className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full transition-all ${sliceModePageId === pageIdx ? 'bg-red-600 text-white shadow-inner' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                                >
+                                    <ScanLine className="w-3 h-3" /> {sliceModePageId === pageIdx ? 'Done Slicing' : 'Slice Mode'}
+                                </button>
                             </div>
 
-                            <div className="relative">
+                            <div
+                                className={`relative select-none ${sliceModePageId === pageIdx ? 'cursor-crosshair' : ''}`}
+                                onMouseMove={(e) => {
+                                    if (sliceModePageId === pageIdx) {
+                                        const rect = e.currentTarget.getBoundingClientRect()
+                                        setHoverLineY(e.clientY - rect.top)
+                                    }
+                                }}
+                                onMouseLeave={() => setHoverLineY(null)}
+                                onClick={(e) => sliceModePageId === pageIdx && handleSliceClick(e, pageIdx, e.currentTarget.querySelector('img')!)}
+                            >
                                 {/* Base Image */}
-                                <img src={img} className="w-full block" />
+                                <img src={img} className="w-full block pointer-events-none" />
+
+                                {/* Slice Line Indicator */}
+                                {sliceModePageId === pageIdx && hoverLineY !== null && (
+                                    <div
+                                        className="absolute w-full h-0.5 bg-red-500 z-50 pointer-events-none shadow-sm"
+                                        style={{ top: hoverLineY }}
+                                    >
+                                        <div className="absolute right-0 -top-6 bg-red-600 text-white text-[9px] px-1 py-0.5 rounded shadow-sm opacity-90">Click to Slice</div>
+                                    </div>
+                                )}
 
                                 {/* Overlays */}
                                 {sources.filter(s => s.pageIndex === pageIdx).map(source => (
@@ -211,13 +296,24 @@ export default function SourceManager() {
                                             height: `${source.crop.height}%`,
                                         }}
                                     >
+                                        {/* In Slice Mode: Only show border, no interaction other than click-through (handled by parent) */}
                                         <div
-                                            className="w-full h-full border border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 cursor-pointer relative transition-all"
-                                            onClick={() => setEditingSourceId(source.id)}
+                                            className={`w-full h-full border box-border transition-all ${sliceModePageId === pageIdx
+                                                    ? 'border-red-300 bg-transparent'
+                                                    : 'border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 cursor-pointer'
+                                                }`}
+                                            onClick={(e) => {
+                                                if (sliceModePageId !== pageIdx) {
+                                                    e.stopPropagation()
+                                                    setEditingSourceId(source.id)
+                                                }
+                                            }}
                                         >
-                                            <div className="absolute top-0 left-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-br shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                                                {source.title}
-                                            </div>
+                                            {!sliceModePageId && (
+                                                <div className="absolute top-0 left-0 bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded-br shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                                    {source.title}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -233,7 +329,7 @@ export default function SourceManager() {
                     </div>
 
                     {/* Edit Modal (Compact) */}
-                    {editingSourceId && (() => {
+                    {editingSourceId && !sliceModePageId && (() => {
                         const source = sources.find(s => s.id === editingSourceId)
                         if (!source) return null
                         const img = pageImages[source.pageIndex]
