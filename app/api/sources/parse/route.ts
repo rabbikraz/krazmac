@@ -40,18 +40,33 @@ async function findSourceRegions(base64: string, mimeType: string) {
         return []
     }
 
-    const prompt = `This is a Hebrew source sheet with multiple sources.
+    const prompt = `Analyze this Hebrew source sheet image. Your job is to identify where each individual source/text begins and ends.
 
-Find each individual source and tell me where it is on the page.
-Sources are usually separated by whitespace, headers, numbers, or lines.
+LOOK FOR THESE SEPARATORS:
+- Numbers (1, 2, 3 or א, ב, ג) at the start of sources
+- Bold headers or titles
+- Larger gaps/whitespace between text blocks
+- Horizontal lines
+- Different fonts or indentation
 
-Return a JSON array:
-[{"title": "Source name", "y": 0, "height": 25}]
+For EACH separate source you identify, give me:
+- title: The source name if visible (like "רש"י", "גמרא ברכות", "רמב"ם"), or "Source 1", "Source 2" etc.
+- y: Where this source STARTS as a percentage from the top (0 = very top, 100 = very bottom)
+- height: How tall this source is as a percentage of the page
 
-y = where source STARTS (% from top, 0-100)
-height = how TALL this source is (%)
+Example response for a page with 3 sources:
+[
+  {"title": "רש\"י בראשית", "y": 0, "height": 30},
+  {"title": "תוספות", "y": 32, "height": 35},
+  {"title": "רמב\"ן", "y": 68, "height": 30}
+]
 
-Return ONLY the JSON array.`
+IMPORTANT: 
+- Find ALL sources, there could be 2, 5, 10, or more
+- Make sure y + height values don't exceed 100
+- Leave small gaps between sources (the y of one should be slightly after y+height of previous)
+
+Return ONLY the JSON array, nothing else.`
 
     try {
         const res = await fetch(
