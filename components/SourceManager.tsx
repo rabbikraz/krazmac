@@ -785,7 +785,7 @@ export default function SourceManager() {
                                                 points={polygonPoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
                                                 fill="none"
                                                 stroke="#2563eb"
-                                                strokeWidth="2"
+                                                strokeWidth="3"
                                             />
                                         )}
                                         {/* Live line from last point to mouse cursor */}
@@ -796,8 +796,7 @@ export default function SourceManager() {
                                                 x2={`${mousePos.x}%`}
                                                 y2={`${mousePos.y}%`}
                                                 stroke="#2563eb"
-                                                strokeWidth="2"
-                                                strokeDasharray="4,4"
+                                                strokeWidth="3"
                                             />
                                         )}
                                         {/* Points - blue dots */}
