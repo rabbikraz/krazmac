@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 // ============================================================================
 // TYPES
@@ -107,7 +108,7 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         ctx.rotate(angle)
         ctx.drawImage(page.imageElement, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh)
         ctx.restore()
-        return canvas.toDataURL('image/png')
+        return canvas.toDataURL('image/jpeg', 0.7)
     } else if (source.polygon && source.polygon.length >= 3) {
         const points = source.polygon.map(p => ({ x: (p.x / 100) * page.width, y: (p.y / 100) * page.height }))
         const minX = Math.min(...points.map(p => p.x))
@@ -116,6 +117,10 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         const maxY = Math.max(...points.map(p => p.y))
         canvas.width = maxX - minX
         canvas.height = maxY - minY
+        // Fill white background for JPEG
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+
         ctx.beginPath()
         ctx.moveTo(points[0].x - minX, points[0].y - minY)
         for (let i = 1; i < points.length; i++) {
@@ -130,7 +135,7 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         ctx.translate(-canvas.width / 2, -canvas.height / 2)
         ctx.drawImage(page.imageElement, minX, minY, maxX - minX, maxY - minY, 0, 0, maxX - minX, maxY - minY)
         ctx.restore()
-        return canvas.toDataURL('image/png')
+        return canvas.toDataURL('image/jpeg', 0.7)
     }
     return null
 }
@@ -171,7 +176,9 @@ export default function SourceManager() {
     const canvasRef = useRef<HTMLDivElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
 
-    // Load shiurim list
+    const searchParams = useSearchParams()
+
+    // Load shiurim list and auto-select if query param exists
     useEffect(() => {
         const loadShiurim = async () => {
             setLoadingShiurim(true)
@@ -180,12 +187,48 @@ export default function SourceManager() {
                 const data = await res.json()
                 // API returns array directly, not { shiurim: [...] }
                 if (Array.isArray(data)) {
-                    setShiurim(data.map((s: any) => ({
+                    const loadedShiurim = data.map((s: any) => ({
                         id: s.id,
                         title: s.title,
                         slug: s.slug,
                         sourceDoc: s.sourceDoc
-                    })))
+                    }))
+                    setShiurim(loadedShiurim)
+
+                    // Auto-select and load if param exists
+                    const paramShiurId = searchParams.get('shiurId')
+                    if (paramShiurId) {
+                        setSelectedShiurId(paramShiurId)
+                        const targetShiur = loadedShiurim.find(s => s.id === paramShiurId)
+                        if (targetShiur?.sourceDoc?.startsWith('sources:')) {
+                            try {
+                                const json = targetShiur.sourceDoc.slice(8)
+                                const parsed = JSON.parse(json)
+                                let sourcesToLoad = []
+                                if (Array.isArray(parsed)) {
+                                    sourcesToLoad = parsed
+                                } else {
+                                    sourcesToLoad = parsed.sources
+                                }
+
+                                setSources(sourcesToLoad.map((src: any) => ({
+                                    id: src.id || `restored-${Date.now()}`,
+                                    pageIndex: 0, // Dummy
+                                    box: null,
+                                    polygon: null,
+                                    rotation: src.rotation || 0,
+                                    clippedImage: src.image,
+                                    name: src.name,
+                                    reference: src.reference,
+                                    displaySize: src.displaySize || 75
+                                })))
+                                setStatusMessage(`Loaded sources from "${targetShiur.title}"`)
+                                setAppState('preview') // Go straight to preview/editing
+                            } catch (e) {
+                                console.error('Failed to parse sources', e)
+                            }
+                        }
+                    }
                 } else {
                     console.error('Unexpected shiurim response:', data)
                 }
@@ -195,7 +238,7 @@ export default function SourceManager() {
             setLoadingShiurim(false)
         }
         loadShiurim()
-    }, [])
+    }, [searchParams])
 
     // Auto-generate clipped images
     useEffect(() => {
@@ -509,66 +552,43 @@ export default function SourceManager() {
         setStatusMessage('Generating source sheet...')
 
         try {
-            // Combine all source images into one PDF-like image
-            const canvas = document.createElement('canvas')
-            const ctx = canvas.getContext('2d')!
+            // Find existing original URL if any
+            const shiur = shiurim.find(s => s.id === selectedShiurId)
+            let originalUrl = null
 
-            // Calculate total height needed
-            const imgWidth = 800
-            let totalHeight = 0
-            const loadedImages: HTMLImageElement[] = []
-
-            for (const source of sources) {
-                if (source.clippedImage) {
-                    const img = new Image()
-                    img.src = source.clippedImage
-                    await new Promise(resolve => { img.onload = resolve })
-                    const aspectRatio = img.height / img.width
-                    totalHeight += imgWidth * aspectRatio + 40 // 40px padding between
-                    loadedImages.push(img)
+            if (shiur?.sourceDoc) {
+                if (shiur.sourceDoc.startsWith('sources:')) {
+                    try {
+                        const parsed = JSON.parse(shiur.sourceDoc.slice(8))
+                        if (!Array.isArray(parsed)) {
+                            originalUrl = parsed.originalUrl
+                        }
+                    } catch { }
+                } else {
+                    // It's a raw URL (legacy or initial upload)
+                    originalUrl = shiur.sourceDoc
                 }
             }
 
-            canvas.width = imgWidth
-            canvas.height = totalHeight + 60
-
-            // White background
-            ctx.fillStyle = 'white'
-            ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-            // Draw each source
-            let yOffset = 30
-            sources.forEach((source, idx) => {
-                if (source.clippedImage && loadedImages[idx]) {
-                    const img = loadedImages[idx]
-                    const aspectRatio = img.height / img.width
-                    const h = imgWidth * aspectRatio
-
-                    // Draw source name
-                    ctx.fillStyle = '#1e293b'
-                    ctx.font = 'bold 16px system-ui'
-                    ctx.fillText(`${idx + 1}. ${source.name}`, 10, yOffset - 5)
-
-                    // Draw image
-                    ctx.drawImage(img, 0, yOffset, imgWidth, h)
-                    yOffset += h + 40
-                }
-            })
-
-            // Store as JSON with individual source images for HTML rendering
+            // Generate source data
             const sourceData = sources.map((source) => ({
                 id: source.id,
                 name: source.name,
                 image: source.clippedImage,
                 rotation: source.rotation,
                 reference: source.reference,
-                displaySize: source.displaySize || 'medium'
+                displaySize: source.displaySize || 75
             }))
 
-            // Save as JSON string prefixed with "sources:" to distinguish from URLs
-            const sourceDocJson = 'sources:' + JSON.stringify(sourceData)
+            // Save as JSON object with sources AND originalUrl
+            const payload = {
+                sources: sourceData,
+                originalUrl: originalUrl
+            }
 
-            // Upload to the shiur (replace sourceDoc)
+            // Prefix "sources:" to identify this is our new format
+            const sourceDocJson = 'sources:' + JSON.stringify(payload)
+
             setStatusMessage('Uploading to shiur...')
 
             const res = await fetch(`/api/shiurim/${selectedShiurId}`, {
@@ -584,7 +604,6 @@ export default function SourceManager() {
                 throw new Error(errData.error || 'Failed to update shiur')
             }
 
-            const shiur = shiurim.find(s => s.id === selectedShiurId)
             setStatusMessage(`✓ Applied to "${shiur?.title}"`)
             alert(`Source sheet successfully applied to "${shiur?.title}"!\n\nThe sources have been saved and will display on the shiur page.`)
 
@@ -657,17 +676,37 @@ export default function SourceManager() {
             <div className="flex-1 flex overflow-hidden">
                 {/* UPLOAD */}
                 {appState === 'upload' && (
-                    <div className="flex-1 flex items-center justify-center">
+                    <div className="flex-1 flex items-center justify-center bg-slate-100 p-8">
                         <div
                             onClick={() => document.getElementById('file-input')?.click()}
                             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f) }}
-                            onDragOver={(e) => e.preventDefault()}
-                            className="border-2 border-dashed border-blue-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50"
+                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500', 'bg-blue-50') }}
+                            onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50') }}
+                            className="bg-white max-w-2xl w-full border-2 border-dashed border-slate-300 rounded-3xl p-16 text-center cursor-pointer transition-all hover:border-blue-500 hover:shadow-xl hover:-translate-y-1 group"
                         >
-                            <div className="text-5xl mb-4">📄</div>
-                            <h2 className="text-xl font-semibold mb-2">Upload Source Sheet</h2>
-                            <p className="text-slate-500">PDF or Image</p>
-                            {error && <p className="text-red-600 mt-2">{error}</p>}
+                            <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
+                                <span className="text-5xl">📄</span>
+                            </div>
+                            <h2 className="text-3xl font-bold text-slate-800 mb-3">Upload Source Sheet</h2>
+                            <p className="text-lg text-slate-500 mb-8 max-w-md mx-auto">
+                                Drag & drop a PDF or Image here, or click to browse.
+                                <span className="block text-sm text-slate-400 mt-2">AI will automatically detect sources and text.</span>
+                            </p>
+
+                            <div className="inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-3 rounded-full font-semibold shadow-lg shadow-blue-200 group-hover:bg-blue-700 transition-colors">
+                                <span>Choose File</span>
+                                <span className="bg-white/20 rounded px-1.5 py-0.5 text-xs">PDF/IMG</span>
+                            </div>
+
+                            {error && (
+                                <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-lg border border-red-100 flex items-center gap-3 text-left">
+                                    <span className="text-2xl">⚠️</span>
+                                    <div>
+                                        <p className="font-bold">Upload Failed</p>
+                                        <p className="text-sm">{error}</p>
+                                    </div>
+                                </div>
+                            )}
                             <input id="file-input" type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }} />
                         </div>
                     </div>
@@ -769,30 +808,32 @@ export default function SourceManager() {
 
                                 {/* Drawing preview - polygon with LINES */}
                                 {polygonPoints.length > 0 && (
-                                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
                                         {/* Lines connecting points */}
                                         {polygonPoints.length > 1 && (
                                             <polyline
-                                                points={polygonPoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                                                points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')}
                                                 fill="none"
                                                 stroke="#3b82f6"
-                                                strokeWidth="3"
+                                                strokeWidth="0.5" // Scale stroke width because viewBox is 100
+                                                vectorEffect="non-scaling-stroke"
                                             />
                                         )}
                                         {/* Points */}
                                         {polygonPoints.map((p, i) => (
-                                            <circle key={i} cx={`${p.x}%`} cy={`${p.y}%`} r="6" fill="#3b82f6" stroke="white" strokeWidth="2" />
+                                            <circle key={i} cx={p.x} cy={p.y} r="0.8" fill="#3b82f6" stroke="white" strokeWidth="0.2" />
                                         ))}
                                         {/* Closing line preview */}
                                         {polygonPoints.length >= 3 && (
                                             <line
-                                                x1={`${polygonPoints[polygonPoints.length - 1].x}%`}
-                                                y1={`${polygonPoints[polygonPoints.length - 1].y}%`}
-                                                x2={`${polygonPoints[0].x}%`}
-                                                y2={`${polygonPoints[0].y}%`}
+                                                x1={polygonPoints[polygonPoints.length - 1].x}
+                                                y1={polygonPoints[polygonPoints.length - 1].y}
+                                                x2={polygonPoints[0].x}
+                                                y2={polygonPoints[0].y}
                                                 stroke="#3b82f6"
-                                                strokeWidth="2"
-                                                strokeDasharray="5,5"
+                                                strokeWidth="0.5"
+                                                strokeDasharray="1,1"
+                                                vectorEffect="non-scaling-stroke"
                                             />
                                         )}
                                     </svg>
@@ -916,53 +957,21 @@ export default function SourceManager() {
                                     <select
                                         value={selectedShiurId || ''}
                                         onChange={(e) => setSelectedShiurId(e.target.value || null)}
-                                        className="w-full px-3 py-2 border rounded text-sm"
+                                        className="w-full max-w-full px-3 py-2 border rounded text-sm truncate pr-8"
                                         disabled={loadingShiurim || saving}
                                     >
                                         <option value="">-- Select a Shiur --</option>
                                         {shiurim.map(s => (
-                                            <option key={s.id} value={s.id}>
-                                                {s.title} {s.sourceDoc?.startsWith('sources:') ? '(Has Sources)' : ''}
+                                            <option key={s.id} value={s.id} className="truncate">
+                                                {s.title} {s.sourceDoc?.startsWith('sources:') ? '✓' : ''}
                                             </option>
                                         ))}
                                     </select>
 
-                                    {/* Load Button - Only if shiur has JSON sources */}
-                                    {selectedShiurId && shiurim.find(s => s.id === selectedShiurId)?.sourceDoc?.startsWith('sources:') && (
-                                        <button
-                                            onClick={() => {
-                                                const s = shiurim.find(s => s.id === selectedShiurId)
-                                                if (s?.sourceDoc && confirm('This will replace your current workspace with the sources from this shiur. You will only be able to reorder/rename/resize them, not re-crop (original PDF is not stored). Continue?')) {
-                                                    try {
-                                                        const json = s.sourceDoc.slice(8)
-                                                        const data = JSON.parse(json)
-                                                        setSources(data.map((src: any) => ({
-                                                            id: src.id || `restored-${Date.now()}`,
-                                                            pageIndex: 0, // Dummy
-                                                            box: null,
-                                                            polygon: null,
-                                                            rotation: src.rotation || 0,
-                                                            clippedImage: src.image,
-                                                            name: src.name,
-                                                            reference: src.reference,
-                                                            displaySize: src.displaySize || 75
-                                                        })))
-                                                        setStatusMessage('Sources loaded')
-                                                    } catch (e) {
-                                                        alert('Failed to parse sources')
-                                                    }
-                                                }
-                                            }}
-                                            className="w-full px-4 py-2 border border-blue-600 text-blue-600 rounded font-medium hover:bg-blue-50 text-sm"
-                                        >
-                                            Load Existing Sources for Editing
-                                        </button>
-                                    )}
-
                                     <button
                                         onClick={applyToShiur}
                                         disabled={!selectedShiurId || saving || sources.length === 0}
-                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-sm transition-colors"
                                     >
                                         {saving ? 'Saving...' : 'Apply Current Sources to Shiur'}
                                     </button>

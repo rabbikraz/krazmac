@@ -238,30 +238,55 @@ export default function AdminDashboard() {
                     {/* Source Sheet Status */}
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       {shiur.sourceDoc?.startsWith('sources:') ? (
-                        <div className="flex items-center justify-center gap-2">
+                        <div className="flex flex-col items-center gap-1.5">
                           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             ✓ Clipped
                           </span>
-                          <button
-                            onClick={() => {
-                              if (confirm('Delete this source sheet? The shiur will keep its URL if it had one.')) {
-                                handleDeleteSourceSheet(shiur.id)
-                              }
-                            }}
-                            className="text-red-500 hover:text-red-700 p-1"
-                            title="Delete source sheet"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/test-sources?shiurId=${shiur.id}`}
+                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              Edit
+                            </Link>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this source sheet? The shiur will keep its URL if it had one.')) {
+                                  handleDeleteSourceSheet(shiur.id)
+                                }
+                              }}
+                              className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                              title="Delete source sheet"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       ) : shiur.sourceDoc ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          📄 URL
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            📄 URL
+                          </span>
+                          <Link
+                            href={`/test-sources?shiurId=${shiur.id}`}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            Convert to Clipped
+                          </Link>
+                        </div>
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                          None
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                            None
+                          </span>
+                          <Link
+                            href={`/test-sources?shiurId=${shiur.id}`}
+                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            + Add
+                          </Link>
+                        </div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

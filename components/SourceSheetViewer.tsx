@@ -103,17 +103,26 @@ function CollapsibleSource({ source, index }: { source: SourceData; index: numbe
 
 export default function SourceSheetViewer({ sourceDoc, title }: SourceSheetViewerProps) {
   const isSourcesJson = sourceDoc?.startsWith('sources:')
+  const [showOriginal, setShowOriginal] = useState(false)
 
-  const sources: SourceData[] = useMemo(() => {
-    if (!isSourcesJson) return []
+  const parsedData = useMemo(() => {
+    if (!isSourcesJson) return { sources: [], originalUrl: null }
     try {
-      return JSON.parse(sourceDoc.slice(8))
+      const json = JSON.parse(sourceDoc.slice(8))
+      if (Array.isArray(json)) {
+        return { sources: json as SourceData[], originalUrl: null }
+      } else {
+        return { sources: json.sources as SourceData[], originalUrl: json.originalUrl || null }
+      }
     } catch {
-      return []
+      return { sources: [], originalUrl: null }
     }
   }, [sourceDoc, isSourcesJson])
 
-  const embedUrl = useMemo(() => {
+  const { sources, originalUrl } = parsedData
+
+  // If it's NOT json, it's just a raw URL
+  const legacyUrl = useMemo(() => {
     if (isSourcesJson) return null
     return convertToEmbedUrl(sourceDoc)
   }, [sourceDoc, isSourcesJson])
@@ -121,7 +130,54 @@ export default function SourceSheetViewer({ sourceDoc, title }: SourceSheetViewe
   if (!sourceDoc) return null
 
   // ============================================================================
-  // NEW ELEGANT DESIGN: Render HTML sources from clipped images
+  // VIEW MODE: Original PDF (if toggled or if legacy URL)
+  // ============================================================================
+  if (legacyUrl || (showOriginal && originalUrl)) {
+    const urlToEmbed = legacyUrl || convertToEmbedUrl(originalUrl)
+    return (
+      <div className="space-y-4">
+        {/* Toggle Button (only if we have both modes) */}
+        {isSourcesJson && originalUrl && (
+          <div className="flex justify-end">
+            <button
+              onClick={() => setShowOriginal(false)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-200 text-blue-700 rounded-lg shadow-sm hover:bg-blue-50 transition-colors text-sm font-medium"
+            >
+              <span>✨ View Clipped Sources</span>
+            </button>
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 md:p-6 lg:p-10">
+            <div className="flex items-center justify-between mb-4 md:mb-6">
+              <h2 className="font-serif text-xl md:text-2xl font-semibold text-primary">
+                Source Sheet {showOriginal ? '(Original PDF)' : ''}
+              </h2>
+              <a
+                href={urlToEmbed}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                Open in new tab <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
+            <div className="relative w-full aspect-[4/5] bg-slate-50 rounded-lg overflow-hidden border border-slate-200">
+              <iframe
+                src={urlToEmbed}
+                className="absolute inset-0 w-full h-full"
+                allow="autoplay"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ============================================================================
+  // VIEW MODE: Clipped Sources
   // ============================================================================
   if (isSourcesJson && sources.length > 0) {
     return (
@@ -137,13 +193,25 @@ export default function SourceSheetViewer({ sourceDoc, title }: SourceSheetViewe
                 {sources.length} source{sources.length !== 1 ? 's' : ''} • {title}
               </p>
             </div>
-            <div className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
-              <span className="text-white/80 text-sm">Scroll to explore</span>
-              <span className="text-white animate-bounce">↓</span>
+
+            <div className="flex items-center gap-3">
+              {/* Toggle to Original PDF */}
+              {originalUrl && (
+                <button
+                  onClick={() => setShowOriginal(true)}
+                  className="bg-white/10 hover:bg-white/20 text-white border border-white/20 backdrop-blur-sm px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  <span>📄 View Original PDF</span>
+                </button>
+              )}
+
+              <div className="hidden md:flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
+                <span className="text-white/80 text-sm">Scroll to explore</span>
+                <span className="text-white animate-bounce">↓</span>
+              </div>
             </div>
           </div>
         </div>
-
         {/* Sources List */}
         <div className="p-4 md:p-6 lg:p-8 space-y-4">
           {sources.map((source, idx) => (
@@ -192,7 +260,7 @@ export default function SourceSheetViewer({ sourceDoc, title }: SourceSheetViewe
           }}
         >
           <iframe
-            src={embedUrl ?? ''}
+            src={legacyUrl ?? ''}
             className="w-full h-full border-0"
             title={`Source Sheet: ${title}`}
             allowFullScreen
