@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // ============================================================================
 // TYPES
@@ -9,16 +9,12 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 interface Source {
     id: string
     pageIndex: number
-    // For rectangles
     box: { x: number; y: number; width: number; height: number } | null
-    // For polygons (array of points, each as % of image size)
     polygon: Array<{ x: number; y: number }> | null
-    rotation: number  // -180 to 180 degrees
+    rotation: number
     clippedImage: string | null
-    text: string
+    name: string  // User-editable name
     reference: string | null
-    sefariaUrl: string | null
-    sefariaText: string | null
 }
 
 interface PageData {
@@ -26,6 +22,12 @@ interface PageData {
     width: number
     height: number
     imageElement: HTMLImageElement | null
+}
+
+interface Shiur {
+    id: number
+    title: string
+    slug: string
 }
 
 type AppState = 'upload' | 'processing' | 'editing' | 'preview'
@@ -48,29 +50,17 @@ async function convertPdfToImages(file: File): Promise<PageData[]> {
         const page = await pdf.getPage(pageNum)
         const scale = 2
         const viewport = page.getViewport({ scale })
-
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width
         canvas.height = viewport.height
-
         const ctx = canvas.getContext('2d')!
         await page.render({ canvasContext: ctx, viewport } as any).promise
-
         const dataUrl = canvas.toDataURL('image/png')
-
-        // Pre-load image element
         const img = new Image()
         img.src = dataUrl
         await new Promise(resolve => { img.onload = resolve })
-
-        pages.push({
-            imageDataUrl: dataUrl,
-            width: viewport.width,
-            height: viewport.height,
-            imageElement: img
-        })
+        pages.push({ imageDataUrl: dataUrl, width: viewport.width, height: viewport.height, imageElement: img })
     }
-
     return pages
 }
 
@@ -78,15 +68,9 @@ async function convertImageToDataUrl(file: File): Promise<PageData> {
     return new Promise((resolve) => {
         const reader = new FileReader()
         const img = new Image()
-
         reader.onload = () => {
             img.onload = () => {
-                resolve({
-                    imageDataUrl: reader.result as string,
-                    width: img.width,
-                    height: img.height,
-                    imageElement: img
-                })
+                resolve({ imageDataUrl: reader.result as string, width: img.width, height: img.height, imageElement: img })
             }
             img.src = reader.result as string
         }
@@ -100,52 +84,36 @@ async function convertImageToDataUrl(file: File): Promise<PageData> {
 
 function clipSourceImage(source: Source, page: PageData): string | null {
     if (!page.imageElement) return null
-
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) return null
 
     if (source.box) {
-        // Rectangle clipping
         const sx = (source.box.x / 100) * page.width
         const sy = (source.box.y / 100) * page.height
         const sw = (source.box.width / 100) * page.width
         const sh = (source.box.height / 100) * page.height
-
-        // Account for rotation by expanding canvas if needed
         const angle = (source.rotation * Math.PI) / 180
         const cos = Math.abs(Math.cos(angle))
         const sin = Math.abs(Math.sin(angle))
         const newW = sw * cos + sh * sin
         const newH = sw * sin + sh * cos
-
         canvas.width = newW
         canvas.height = newH
-
         ctx.save()
         ctx.translate(newW / 2, newH / 2)
         ctx.rotate(angle)
         ctx.drawImage(page.imageElement, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh)
         ctx.restore()
-
         return canvas.toDataURL('image/png')
     } else if (source.polygon && source.polygon.length >= 3) {
-        // Polygon clipping
-        const points = source.polygon.map(p => ({
-            x: (p.x / 100) * page.width,
-            y: (p.y / 100) * page.height
-        }))
-
-        // Find bounding box
+        const points = source.polygon.map(p => ({ x: (p.x / 100) * page.width, y: (p.y / 100) * page.height }))
         const minX = Math.min(...points.map(p => p.x))
         const maxX = Math.max(...points.map(p => p.x))
         const minY = Math.min(...points.map(p => p.y))
         const maxY = Math.max(...points.map(p => p.y))
-
         canvas.width = maxX - minX
         canvas.height = maxY - minY
-
-        // Create clip path
         ctx.beginPath()
         ctx.moveTo(points[0].x - minX, points[0].y - minY)
         for (let i = 1; i < points.length; i++) {
@@ -153,8 +121,6 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         }
         ctx.closePath()
         ctx.clip()
-
-        // Apply rotation
         const angle = (source.rotation * Math.PI) / 180
         ctx.save()
         ctx.translate(canvas.width / 2, canvas.height / 2)
@@ -162,10 +128,8 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         ctx.translate(-canvas.width / 2, -canvas.height / 2)
         ctx.drawImage(page.imageElement, minX, minY, maxX - minX, maxY - minY, 0, 0, maxX - minX, maxY - minY)
         ctx.restore()
-
         return canvas.toDataURL('image/png')
     }
-
     return null
 }
 
@@ -174,7 +138,6 @@ function clipSourceImage(source: Source, page: PageData): string | null {
 // ============================================================================
 
 export default function SourceManager() {
-    // State
     const [appState, setAppState] = useState<AppState>('upload')
     const [pages, setPages] = useState<PageData[]>([])
     const [sources, setSources] = useState<Source[]>([])
@@ -182,8 +145,6 @@ export default function SourceManager() {
     const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
     const [statusMessage, setStatusMessage] = useState('')
     const [error, setError] = useState<string | null>(null)
-
-    // Drawing mode
     const [drawMode, setDrawMode] = useState<DrawMode>('rectangle')
 
     // Rectangle drawing
@@ -194,39 +155,46 @@ export default function SourceManager() {
     // Polygon drawing
     const [polygonPoints, setPolygonPoints] = useState<Array<{ x: number; y: number }>>([])
 
-    // Editing
-    const [editMode, setEditMode] = useState<'none' | 'drag' | 'resize'>('none')
+    // Editing (drag/resize)
+    const [editMode, setEditMode] = useState<'none' | 'drag' | 'resize' | 'rotate'>('none')
     const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
-    const [editStart, setEditStart] = useState<{ x: number; y: number; box: { x: number; y: number; width: number; height: number } } | null>(null)
+    const [editStart, setEditStart] = useState<{ x: number; y: number; box?: { x: number; y: number; width: number; height: number }; rotation?: number } | null>(null)
     const [resizeHandle, setResizeHandle] = useState<'nw' | 'ne' | 'sw' | 'se' | null>(null)
+
+    // Shiur attachment
+    const [shiurim, setShiurim] = useState<Shiur[]>([])
+    const [selectedShiurId, setSelectedShiurId] = useState<number | null>(null)
+    const [loadingShiurim, setLoadingShiurim] = useState(false)
 
     const canvasRef = useRef<HTMLDivElement>(null)
 
-    // ============================================================================
-    // AUTO-GENERATE CLIPPED IMAGES when sources change
-    // ============================================================================
+    // Load shiurim list
     useEffect(() => {
-        const generateMissingClips = async () => {
-            const updated = sources.map(s => {
-                if (!s.clippedImage && (s.box || s.polygon)) {
-                    const page = pages[s.pageIndex]
-                    if (page) {
-                        return { ...s, clippedImage: clipSourceImage(s, page) }
-                    }
-                }
-                return s
-            })
-
-            // Only update if something changed
-            const hasChanges = updated.some((s, i) => s.clippedImage !== sources[i].clippedImage)
-            if (hasChanges) {
-                setSources(updated)
+        const loadShiurim = async () => {
+            setLoadingShiurim(true)
+            try {
+                const res = await fetch('/api/shiurim?limit=100')
+                const data = await res.json() as { shiurim?: Shiur[] }
+                setShiurim(data.shiurim || [])
+            } catch (e) {
+                console.error('Failed to load shiurim:', e)
             }
+            setLoadingShiurim(false)
         }
+        loadShiurim()
+    }, [])
 
-        if (pages.length > 0 && sources.length > 0) {
-            generateMissingClips()
-        }
+    // Auto-generate clipped images
+    useEffect(() => {
+        const updated = sources.map(s => {
+            if (!s.clippedImage && (s.box || s.polygon)) {
+                const page = pages[s.pageIndex]
+                if (page) return { ...s, clippedImage: clipSourceImage(s, page) }
+            }
+            return s
+        })
+        const hasChanges = updated.some((s, i) => s.clippedImage !== sources[i].clippedImage)
+        if (hasChanges) setSources(updated)
     }, [sources, pages])
 
     // ============================================================================
@@ -237,100 +205,63 @@ export default function SourceManager() {
         setError(null)
         setAppState('processing')
         setStatusMessage('Loading file...')
-
         try {
             let pageData: PageData[]
-
             if (file.type === 'application/pdf') {
-                setStatusMessage('Converting PDF pages to images...')
+                setStatusMessage('Converting PDF...')
                 pageData = await convertPdfToImages(file)
             } else {
                 setStatusMessage('Loading image...')
                 pageData = [await convertImageToDataUrl(file)]
             }
-
             setPages(pageData)
-            setStatusMessage(`Loaded ${pageData.length} page(s). Analyzing with AI...`)
+            setStatusMessage(`Analyzing ${pageData.length} page(s)...`)
 
-            // Analyze each page
             const allSources: Source[] = []
-
             for (let i = 0; i < pageData.length; i++) {
-                setStatusMessage(`Analyzing page ${i + 1} of ${pageData.length}...`)
+                setStatusMessage(`Analyzing page ${i + 1}...`)
                 const pageSources = await analyzePageWithGemini(pageData[i], i)
                 allSources.push(...pageSources)
             }
 
-            // Generate clipped images for all sources immediately
             for (const source of allSources) {
                 source.clippedImage = clipSourceImage(source, pageData[source.pageIndex])
             }
 
-            if (allSources.length === 0) {
-                setStatusMessage('No sources detected. Draw boxes manually.')
-            } else {
-                setStatusMessage(`Found ${allSources.length} sources.`)
-            }
-
             setSources(allSources)
-            setCurrentPageIndex(0)
+            setStatusMessage(allSources.length > 0 ? `Found ${allSources.length} sources` : 'Draw sources manually')
             setAppState('editing')
-
         } catch (err) {
-            console.error('Error processing file:', err)
             setError(String(err))
             setAppState('upload')
         }
     }
-
-    // ============================================================================
-    // AI ANALYSIS
-    // ============================================================================
 
     const analyzePageWithGemini = async (page: PageData, pageIndex: number): Promise<Source[]> => {
         try {
             const response = await fetch(page.imageDataUrl)
             const blob = await response.blob()
             const file = new File([blob], 'page.png', { type: 'image/png' })
-
             const formData = new FormData()
             formData.append('image', file)
 
-            const res = await fetch('/api/sources/analyze', {
-                method: 'POST',
-                body: formData
-            })
+            const res = await fetch('/api/sources/analyze', { method: 'POST', body: formData })
+            const data = await res.json() as { success: boolean; sources?: Array<{ id?: string; box: { x: number; y: number; width: number; height: number }; text?: string; reference?: string | null }> }
 
-            const data = await res.json() as {
-                success: boolean
-                sources?: Array<{
-                    id?: string
-                    box: { x: number; y: number; width: number; height: number }
-                    text?: string
-                    reference?: string | null
-                }>
-            }
-
-            if (data.success && data.sources && data.sources.length > 0) {
-                return data.sources.map((s) => ({
-                    id: s.id || `source-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            if (data.success && data.sources?.length) {
+                return data.sources.map((s, idx) => ({
+                    id: s.id || `src-${Date.now()}-${idx}`,
                     pageIndex,
                     box: s.box,
                     polygon: null,
                     rotation: 0,
                     clippedImage: null,
-                    text: s.text || '',
-                    reference: s.reference || null,
-                    sefariaUrl: null,
-                    sefariaText: null
+                    name: s.reference || `Source ${idx + 1}`,
+                    reference: s.reference || null
                 }))
             }
-
             return []
-        } catch (err) {
-            console.error('Gemini analysis failed:', err)
-            return []
-        }
+        } catch { return [] }
     }
 
     // ============================================================================
@@ -342,58 +273,41 @@ export default function SourceManager() {
         if (selectedSourceId === id) setSelectedSourceId(null)
     }
 
+    const updateSourceName = (id: string, name: string) => {
+        setSources(prev => prev.map(s => s.id === id ? { ...s, name } : s))
+    }
+
     const updateSourceRotation = (id: string, rotation: number) => {
-        setSources(prev => prev.map(s => {
-            if (s.id === id) {
-                const updated = { ...s, rotation, clippedImage: null } // Clear image to regenerate
-                return updated
-            }
-            return s
-        }))
+        setSources(prev => prev.map(s => s.id === id ? { ...s, rotation, clippedImage: null } : s))
     }
 
-    const updateSourceReference = (id: string, reference: string) => {
-        setSources(prev => prev.map(s =>
-            s.id === id ? { ...s, reference } : s
-        ))
-    }
-
-    const clearCurrentPage = () => {
+    const clearPage = () => {
         setSources(prev => prev.filter(s => s.pageIndex !== currentPageIndex))
-        setSelectedSourceId(null)
     }
 
     const applyQuickGrid = (rows: number) => {
-        const newSources: Source[] = []
         const rowHeight = 90 / rows
-
+        const newSources: Source[] = []
         for (let i = 0; i < rows; i++) {
-            const source: Source = {
-                id: `grid-${currentPageIndex}-${i}-${Date.now()}`,
+            newSources.push({
+                id: `grid-${Date.now()}-${i}`,
                 pageIndex: currentPageIndex,
-                box: { x: 5, y: 5 + (i * rowHeight), width: 90, height: rowHeight },
+                box: { x: 5, y: 5 + i * rowHeight, width: 90, height: rowHeight },
                 polygon: null,
                 rotation: 0,
                 clippedImage: null,
-                text: '',
-                reference: null,
-                sefariaUrl: null,
-                sefariaText: null
-            }
-            newSources.push(source)
+                name: `Source ${i + 1}`,
+                reference: null
+            })
         }
-
-        setSources(prev => [
-            ...prev.filter(s => s.pageIndex !== currentPageIndex),
-            ...newSources
-        ])
+        setSources(prev => [...prev.filter(s => s.pageIndex !== currentPageIndex), ...newSources])
     }
 
     // ============================================================================
-    // DRAWING HANDLERS
+    // DRAWING / EDITING
     // ============================================================================
 
-    const getRelativePosition = (e: React.MouseEvent<HTMLDivElement>) => {
+    const getPos = (e: React.MouseEvent) => {
         if (!canvasRef.current) return { x: 0, y: 0 }
         const rect = canvasRef.current.getBoundingClientRect()
         return {
@@ -404,40 +318,29 @@ export default function SourceManager() {
 
     const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (drawMode === 'polygon' && appState === 'editing') {
-            const pos = getRelativePosition(e)
-            setPolygonPoints(prev => [...prev, pos])
+            setPolygonPoints(prev => [...prev, getPos(e)])
         }
     }
 
     const finishPolygon = () => {
         if (polygonPoints.length >= 3) {
-            const newSource: Source = {
-                id: `polygon-${Date.now()}`,
+            setSources(prev => [...prev, {
+                id: `poly-${Date.now()}`,
                 pageIndex: currentPageIndex,
                 box: null,
                 polygon: [...polygonPoints],
                 rotation: 0,
                 clippedImage: null,
-                text: '',
-                reference: null,
-                sefariaUrl: null,
-                sefariaText: null
-            }
-            setSources(prev => [...prev, newSource])
-            setSelectedSourceId(newSource.id)
+                name: `Polygon ${prev.length + 1}`,
+                reference: null
+            }])
         }
         setPolygonPoints([])
     }
 
-    const cancelPolygon = () => {
-        setPolygonPoints([])
-    }
-
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (appState !== 'editing' || drawMode !== 'rectangle') return
-        if (editMode !== 'none') return
-
-        const pos = getRelativePosition(e)
+        if (appState !== 'editing' || drawMode !== 'rectangle' || editMode !== 'none') return
+        const pos = getPos(e)
         setIsDrawing(true)
         setDrawStart(pos)
         setDrawEnd(pos)
@@ -445,65 +348,56 @@ export default function SourceManager() {
     }
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        const pos = getRelativePosition(e)
+        const pos = getPos(e)
 
-        if (editMode !== 'none' && editingSourceId && editStart) {
-            const deltaX = pos.x - editStart.x
-            const deltaY = pos.y - editStart.y
+        // Rotating
+        if (editMode === 'rotate' && editingSourceId && editStart) {
+            const source = sources.find(s => s.id === editingSourceId)
+            if (source?.box) {
+                const centerX = source.box.x + source.box.width / 2
+                const centerY = source.box.y + source.box.height / 2
+                const angle = Math.atan2(pos.y - centerY, pos.x - centerX) * (180 / Math.PI)
+                updateSourceRotation(editingSourceId, Math.round(angle))
+            }
+            return
+        }
 
+        // Dragging
+        if (editMode === 'drag' && editingSourceId && editStart?.box) {
+            const dx = pos.x - editStart.x
+            const dy = pos.y - editStart.y
             setSources(prev => prev.map(s => {
                 if (s.id !== editingSourceId || !s.box) return s
-
-                if (editMode === 'drag') {
-                    return {
-                        ...s,
-                        box: {
-                            ...s.box,
-                            x: Math.max(0, Math.min(100 - editStart.box.width, editStart.box.x + deltaX)),
-                            y: Math.max(0, Math.min(100 - editStart.box.height, editStart.box.y + deltaY))
-                        },
-                        clippedImage: null // Regenerate
-                    }
-                } else if (editMode === 'resize' && resizeHandle) {
-                    let newX = editStart.box.x
-                    let newY = editStart.box.y
-                    let newW = editStart.box.width
-                    let newH = editStart.box.height
-
-                    if (resizeHandle.includes('w')) {
-                        newX = Math.min(editStart.box.x + editStart.box.width - 5, editStart.box.x + deltaX)
-                        newW = editStart.box.width - deltaX
-                    }
-                    if (resizeHandle.includes('e')) {
-                        newW = Math.max(5, editStart.box.width + deltaX)
-                    }
-                    if (resizeHandle.includes('n')) {
-                        newY = Math.min(editStart.box.y + editStart.box.height - 5, editStart.box.y + deltaY)
-                        newH = editStart.box.height - deltaY
-                    }
-                    if (resizeHandle.includes('s')) {
-                        newH = Math.max(5, editStart.box.height + deltaY)
-                    }
-
-                    return {
-                        ...s,
-                        box: {
-                            x: Math.max(0, newX),
-                            y: Math.max(0, newY),
-                            width: Math.max(5, Math.min(100 - newX, newW)),
-                            height: Math.max(5, Math.min(100 - newY, newH))
-                        },
-                        clippedImage: null
-                    }
+                return {
+                    ...s,
+                    box: {
+                        ...s.box,
+                        x: Math.max(0, Math.min(100 - editStart.box!.width, editStart.box!.x + dx)),
+                        y: Math.max(0, Math.min(100 - editStart.box!.height, editStart.box!.y + dy))
+                    },
+                    clippedImage: null
                 }
-                return s
             }))
             return
         }
 
-        if (isDrawing && drawMode === 'rectangle') {
-            setDrawEnd(pos)
+        // Resizing
+        if (editMode === 'resize' && editingSourceId && editStart?.box && resizeHandle) {
+            const dx = pos.x - editStart.x
+            const dy = pos.y - editStart.y
+            setSources(prev => prev.map(s => {
+                if (s.id !== editingSourceId || !s.box) return s
+                let { x, y, width, height } = editStart.box!
+                if (resizeHandle.includes('w')) { x += dx; width -= dx }
+                if (resizeHandle.includes('e')) { width += dx }
+                if (resizeHandle.includes('n')) { y += dy; height -= dy }
+                if (resizeHandle.includes('s')) { height += dy }
+                return { ...s, box: { x: Math.max(0, x), y: Math.max(0, y), width: Math.max(5, width), height: Math.max(5, height) }, clippedImage: null }
+            }))
+            return
         }
+
+        if (isDrawing) setDrawEnd(pos)
     }
 
     const handleMouseUp = () => {
@@ -515,10 +409,7 @@ export default function SourceManager() {
             return
         }
 
-        if (!isDrawing || !drawStart || !drawEnd) {
-            setIsDrawing(false)
-            return
-        }
+        if (!isDrawing || !drawStart || !drawEnd) { setIsDrawing(false); return }
 
         const x = Math.min(drawStart.x, drawEnd.x)
         const y = Math.min(drawStart.y, drawEnd.y)
@@ -526,54 +417,64 @@ export default function SourceManager() {
         const height = Math.abs(drawEnd.y - drawStart.y)
 
         if (width > 3 && height > 3) {
-            const newSource: Source = {
+            setSources(prev => [...prev, {
                 id: `rect-${Date.now()}`,
                 pageIndex: currentPageIndex,
                 box: { x, y, width, height },
                 polygon: null,
                 rotation: 0,
                 clippedImage: null,
-                text: '',
-                reference: null,
-                sefariaUrl: null,
-                sefariaText: null
-            }
-            setSources(prev => [...prev, newSource])
-            setSelectedSourceId(newSource.id)
+                name: `Source ${prev.length + 1}`,
+                reference: null
+            }])
         }
-
         setIsDrawing(false)
         setDrawStart(null)
         setDrawEnd(null)
     }
 
-    const startDrag = (e: React.MouseEvent<HTMLDivElement>, source: Source) => {
+    const startDrag = (e: React.MouseEvent, source: Source) => {
         if (!source.box) return
         e.stopPropagation()
-        const pos = getRelativePosition(e)
         setEditMode('drag')
         setEditingSourceId(source.id)
-        setEditStart({ x: pos.x, y: pos.y, box: { ...source.box } })
+        setEditStart({ ...getPos(e), box: { ...source.box } })
         setSelectedSourceId(source.id)
     }
 
-    const startResize = (e: React.MouseEvent<HTMLDivElement>, source: Source, handle: 'nw' | 'ne' | 'sw' | 'se') => {
+    const startResize = (e: React.MouseEvent, source: Source, handle: 'nw' | 'ne' | 'sw' | 'se') => {
         if (!source.box) return
         e.stopPropagation()
-        const pos = getRelativePosition(e)
         setEditMode('resize')
-        setEditingSourceId(source.id)
         setResizeHandle(handle)
-        setEditStart({ x: pos.x, y: pos.y, box: { ...source.box } })
+        setEditingSourceId(source.id)
+        setEditStart({ ...getPos(e), box: { ...source.box } })
         setSelectedSourceId(source.id)
     }
 
-    // ============================================================================
-    // COMPUTED VALUES
-    // ============================================================================
+    const startRotate = (e: React.MouseEvent, source: Source) => {
+        e.stopPropagation()
+        setEditMode('rotate')
+        setEditingSourceId(source.id)
+        setEditStart({ ...getPos(e), rotation: source.rotation })
+        setSelectedSourceId(source.id)
+    }
 
     const currentPageSources = sources.filter(s => s.pageIndex === currentPageIndex)
-    const selectedSource = sources.find(s => s.id === selectedSourceId)
+
+    // ============================================================================
+    // APPLY TO SHIUR
+    // ============================================================================
+
+    const applyToShiur = async () => {
+        if (!selectedShiurId) {
+            alert('Please select a shiur first')
+            return
+        }
+        // For now just alert - you can implement actual saving logic
+        const shiur = shiurim.find(s => s.id === selectedShiurId)
+        alert(`Source sheet with ${sources.length} sources would be attached to: ${shiur?.title}\n\n(This is a placeholder - implement actual save logic)`)
+    }
 
     // ============================================================================
     // RENDER
@@ -582,247 +483,153 @@ export default function SourceManager() {
     return (
         <div className="h-screen flex flex-col bg-slate-100">
             {/* HEADER */}
-            <header className="bg-white border-b px-4 py-3 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-slate-800">📜 Source Clipper</h1>
-
-                    {statusMessage && (
-                        <span className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                            {statusMessage}
-                        </span>
-                    )}
-                </div>
+            <header className="bg-white border-b px-4 py-2 flex items-center justify-between shadow-sm">
+                <h1 className="text-lg font-bold text-slate-800">📜 Source Clipper</h1>
 
                 {pages.length > 0 && (
-                    <div className="flex items-center gap-3">
-                        {/* Draw Mode Toggle */}
-                        <div className="flex bg-slate-100 rounded-lg p-0.5">
-                            <button
-                                onClick={() => { setDrawMode('rectangle'); setPolygonPoints([]) }}
-                                className={`px-3 py-1 text-sm rounded ${drawMode === 'rectangle' ? 'bg-white shadow' : ''}`}
-                            >
-                                ▭ Rectangle
-                            </button>
-                            <button
-                                onClick={() => setDrawMode('polygon')}
-                                className={`px-3 py-1 text-sm rounded ${drawMode === 'polygon' ? 'bg-white shadow' : ''}`}
-                            >
-                                ⬡ Polygon
-                            </button>
+                    <div className="flex items-center gap-2 text-sm">
+                        {/* Draw mode */}
+                        <div className="flex bg-slate-100 rounded p-0.5">
+                            <button onClick={() => { setDrawMode('rectangle'); setPolygonPoints([]) }} className={`px-2 py-1 rounded ${drawMode === 'rectangle' ? 'bg-white shadow' : ''}`}>▭ Rect</button>
+                            <button onClick={() => setDrawMode('polygon')} className={`px-2 py-1 rounded ${drawMode === 'polygon' ? 'bg-white shadow' : ''}`}>⬡ Poly</button>
                         </div>
 
-                        {/* Polygon controls */}
-                        {drawMode === 'polygon' && polygonPoints.length > 0 && (
-                            <div className="flex gap-1">
-                                <span className="text-xs text-slate-500">{polygonPoints.length} points</span>
-                                <button
-                                    onClick={finishPolygon}
-                                    disabled={polygonPoints.length < 3}
-                                    className="px-2 py-0.5 text-xs bg-green-500 text-white rounded disabled:opacity-50"
-                                >
-                                    ✓ Finish
-                                </button>
-                                <button
-                                    onClick={cancelPolygon}
-                                    className="px-2 py-0.5 text-xs bg-red-500 text-white rounded"
-                                >
-                                    ✗ Cancel
-                                </button>
-                            </div>
+                        {polygonPoints.length > 0 && (
+                            <>
+                                <span className="text-slate-500">{polygonPoints.length} pts</span>
+                                <button onClick={finishPolygon} disabled={polygonPoints.length < 3} className="px-2 py-1 bg-green-500 text-white rounded disabled:opacity-50">✓</button>
+                                <button onClick={() => setPolygonPoints([])} className="px-2 py-1 bg-red-500 text-white rounded">✗</button>
+                            </>
                         )}
 
-                        {/* Page Navigation */}
-                        <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-1.5">
-                            <button
-                                onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))}
-                                disabled={currentPageIndex === 0}
-                                className="text-slate-600 disabled:text-slate-300 font-bold"
-                            >
-                                ←
-                            </button>
-                            <span className="text-sm font-medium min-w-[80px] text-center">
-                                Page {currentPageIndex + 1} / {pages.length}
-                            </span>
-                            <button
-                                onClick={() => setCurrentPageIndex(Math.min(pages.length - 1, currentPageIndex + 1))}
-                                disabled={currentPageIndex === pages.length - 1}
-                                className="text-slate-600 disabled:text-slate-300 font-bold"
-                            >
-                                →
-                            </button>
+                        {/* Page nav */}
+                        <div className="flex items-center gap-1 bg-slate-100 rounded px-2 py-1">
+                            <button onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))} disabled={currentPageIndex === 0} className="disabled:opacity-30">←</button>
+                            <span>{currentPageIndex + 1}/{pages.length}</span>
+                            <button onClick={() => setCurrentPageIndex(Math.min(pages.length - 1, currentPageIndex + 1))} disabled={currentPageIndex === pages.length - 1} className="disabled:opacity-30">→</button>
                         </div>
 
                         {/* Quick Grid */}
                         <div className="relative group">
-                            <button className="px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">
-                                ⊞ Quick Grid
-                            </button>
-                            <div className="absolute right-0 top-full mt-1 bg-white border rounded-lg shadow-lg p-2 hidden group-hover:block z-10">
+                            <button className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded">Grid</button>
+                            <div className="absolute right-0 top-full mt-1 bg-white border rounded shadow-lg p-1 hidden group-hover:block z-20">
                                 {[2, 3, 4, 5, 6].map(n => (
-                                    <button
-                                        key={n}
-                                        onClick={() => applyQuickGrid(n)}
-                                        className="block w-full text-left px-3 py-1 text-sm hover:bg-blue-50 rounded"
-                                    >
-                                        {n} rows
-                                    </button>
+                                    <button key={n} onClick={() => applyQuickGrid(n)} className="block w-full text-left px-3 py-1 hover:bg-blue-50 rounded">{n} rows</button>
                                 ))}
                             </div>
                         </div>
 
-                        <button
-                            onClick={clearCurrentPage}
-                            className="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg"
-                        >
-                            🗑 Clear
-                        </button>
+                        <button onClick={clearPage} className="px-2 py-1 text-red-600 hover:bg-red-50 rounded">Clear</button>
 
-                        {/* View Toggle */}
-                        <div className="flex bg-slate-100 rounded-lg p-0.5">
-                            <button
-                                onClick={() => setAppState('editing')}
-                                className={`px-3 py-1 text-sm rounded ${appState === 'editing' ? 'bg-white shadow' : ''}`}
-                            >
-                                ✏️ Edit
-                            </button>
-                            <button
-                                onClick={() => setAppState('preview')}
-                                className={`px-3 py-1 text-sm rounded ${appState === 'preview' ? 'bg-white shadow' : ''}`}
-                            >
-                                👁 Preview
-                            </button>
+                        {/* View toggle */}
+                        <div className="flex bg-slate-100 rounded p-0.5">
+                            <button onClick={() => setAppState('editing')} className={`px-2 py-1 rounded ${appState === 'editing' ? 'bg-white shadow' : ''}`}>Edit</button>
+                            <button onClick={() => setAppState('preview')} className={`px-2 py-1 rounded ${appState === 'preview' ? 'bg-white shadow' : ''}`}>Preview</button>
                         </div>
+
+                        {statusMessage && <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded">{statusMessage}</span>}
                     </div>
                 )}
             </header>
 
-            {/* MAIN CONTENT */}
+            {/* MAIN */}
             <div className="flex-1 flex overflow-hidden">
-
-                {/* UPLOAD STATE */}
+                {/* UPLOAD */}
                 {appState === 'upload' && (
-                    <div className="flex-1 flex items-center justify-center p-8">
+                    <div className="flex-1 flex items-center justify-center">
                         <div
-                            onClick={() => document.getElementById('file-upload')?.click()}
-                            onDrop={(e) => {
-                                e.preventDefault()
-                                const f = e.dataTransfer.files[0]
-                                if (f) handleFileUpload(f)
-                            }}
+                            onClick={() => document.getElementById('file-input')?.click()}
+                            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f) }}
                             onDragOver={(e) => e.preventDefault()}
-                            className="w-full max-w-md border-2 border-dashed border-blue-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition-all"
+                            className="border-2 border-dashed border-blue-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50"
                         >
                             <div className="text-5xl mb-4">📄</div>
-                            <h2 className="text-xl font-semibold text-slate-800 mb-2">Upload Source Sheet</h2>
-                            <p className="text-slate-500 mb-4">PDF or Image file</p>
-                            {error && <p className="text-red-600 text-sm">{error}</p>}
-                            <input
-                                id="file-upload"
-                                type="file"
-                                accept=".pdf,image/*"
-                                className="hidden"
-                                onChange={(e) => {
-                                    const f = e.target.files?.[0]
-                                    if (f) handleFileUpload(f)
-                                }}
-                            />
+                            <h2 className="text-xl font-semibold mb-2">Upload Source Sheet</h2>
+                            <p className="text-slate-500">PDF or Image</p>
+                            {error && <p className="text-red-600 mt-2">{error}</p>}
+                            <input id="file-input" type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }} />
                         </div>
                     </div>
                 )}
 
-                {/* PROCESSING STATE */}
+                {/* PROCESSING */}
                 {appState === 'processing' && (
                     <div className="flex-1 flex items-center justify-center">
                         <div className="text-center">
                             <div className="text-5xl mb-4 animate-bounce">🔍</div>
-                            <p className="text-lg font-medium text-slate-700">{statusMessage}</p>
+                            <p className="text-lg">{statusMessage}</p>
                         </div>
                     </div>
                 )}
 
-                {/* EDITING STATE */}
+                {/* EDITING */}
                 {appState === 'editing' && pages.length > 0 && (
                     <>
-                        {/* Canvas */}
-                        <div className="flex-1 overflow-auto p-6 flex justify-center">
+                        <div className="flex-1 overflow-auto p-4 flex justify-center">
                             <div
                                 ref={canvasRef}
-                                className={`relative inline-block select-none ${drawMode === 'polygon' ? 'cursor-crosshair' : 'cursor-crosshair'}`}
+                                className="relative inline-block cursor-crosshair"
                                 onClick={handleCanvasClick}
                                 onMouseDown={handleMouseDown}
                                 onMouseMove={handleMouseMove}
                                 onMouseUp={handleMouseUp}
                                 onMouseLeave={handleMouseUp}
                             >
-                                <img
-                                    src={pages[currentPageIndex].imageDataUrl}
-                                    alt={`Page ${currentPageIndex + 1}`}
-                                    className="max-h-[calc(100vh-120px)] shadow-xl rounded-lg pointer-events-none"
-                                    draggable={false}
-                                />
+                                <img src={pages[currentPageIndex].imageDataUrl} alt="Page" className="max-h-[calc(100vh-100px)] shadow-xl rounded-lg pointer-events-none" draggable={false} />
 
-                                {/* Source Boxes */}
+                                {/* Render sources */}
                                 {currentPageSources.map((source, idx) => {
                                     if (source.box) {
+                                        const isSelected = selectedSourceId === source.id
                                         return (
                                             <div
                                                 key={source.id}
                                                 onClick={(e) => { e.stopPropagation(); setSelectedSourceId(source.id) }}
-                                                className={`absolute border-2 transition-all group ${selectedSourceId === source.id
-                                                    ? 'border-green-500 bg-green-500/20 shadow-lg z-20'
-                                                    : 'border-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
-                                                    }`}
+                                                className={`absolute border-2 ${isSelected ? 'border-green-500 bg-green-500/20 z-20' : 'border-blue-500 bg-blue-500/10'}`}
                                                 style={{
-                                                    left: `${source.box.x}%`,
-                                                    top: `${source.box.y}%`,
-                                                    width: `${source.box.width}%`,
-                                                    height: `${source.box.height}%`,
+                                                    left: `${source.box.x}%`, top: `${source.box.y}%`,
+                                                    width: `${source.box.width}%`, height: `${source.box.height}%`,
                                                     transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined,
-                                                    transformOrigin: 'center center'
+                                                    transformOrigin: 'center'
                                                 }}
                                             >
                                                 {/* Number */}
-                                                <span className="absolute -top-3 -left-3 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow z-10">
-                                                    {idx + 1}
-                                                </span>
+                                                <span className="absolute -top-3 -left-3 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow">{idx + 1}</span>
 
                                                 {/* Delete */}
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }}
-                                                    className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full shadow z-20"
+                                                <button onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }} className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 text-white rounded-full shadow">×</button>
+
+                                                {/* ROTATION HANDLE - Circular, positioned outside the box */}
+                                                <div
+                                                    onMouseDown={(e) => startRotate(e, source)}
+                                                    className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-orange-500 hover:bg-orange-600 rounded-full cursor-grab flex items-center justify-center text-white text-xs shadow-lg"
+                                                    title={`Rotate (${source.rotation}°)`}
                                                 >
-                                                    ×
-                                                </button>
+                                                    ↻
+                                                </div>
+                                                {/* Rotation indicator line */}
+                                                <div className="absolute -top-5 left-1/2 w-px h-3 bg-orange-500" />
 
                                                 {/* Drag area */}
-                                                <div
-                                                    onMouseDown={(e) => startDrag(e, source)}
-                                                    className="absolute inset-4 cursor-move"
-                                                />
+                                                <div onMouseDown={(e) => startDrag(e, source)} className="absolute inset-2 cursor-move" />
 
                                                 {/* Resize handles */}
-                                                <div onMouseDown={(e) => startResize(e, source, 'nw')} className="absolute -top-1. -left-1.5 w-3 h-3 bg-blue-600 cursor-nw-resize rounded-sm" />
-                                                <div onMouseDown={(e) => startResize(e, source, 'ne')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-blue-600 cursor-ne-resize rounded-sm" />
-                                                <div onMouseDown={(e) => startResize(e, source, 'sw')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-blue-600 cursor-sw-resize rounded-sm" />
-                                                <div onMouseDown={(e) => startResize(e, source, 'se')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-blue-600 cursor-se-resize rounded-sm" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'nw')} className="absolute -top-1 -left-1 w-3 h-3 bg-blue-600 cursor-nw-resize" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'ne')} className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 cursor-ne-resize" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'sw')} className="absolute -bottom-1 -left-1 w-3 h-3 bg-blue-600 cursor-sw-resize" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'se')} className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 cursor-se-resize" />
                                             </div>
                                         )
-                                    } else if (source.polygon) {
-                                        // Render polygon as SVG overlay
-                                        const points = source.polygon.map(p => `${p.x}%,${p.y}%`).join(' ')
+                                    } else if (source.polygon && source.polygon.length >= 3) {
                                         return (
-                                            <svg
-                                                key={source.id}
-                                                className="absolute inset-0 w-full h-full pointer-events-none"
-                                                style={{ transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined }}
-                                            >
+                                            <svg key={source.id} className="absolute inset-0 w-full h-full pointer-events-none" style={{ transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined }}>
                                                 <polygon
                                                     points={source.polygon.map(p => `${p.x}%,${p.y}%`).join(' ')}
-                                                    fill={selectedSourceId === source.id ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.1)'}
+                                                    fill={selectedSourceId === source.id ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.15)'}
                                                     stroke={selectedSourceId === source.id ? '#22c55e' : '#3b82f6'}
                                                     strokeWidth="2"
-                                                    className="cursor-pointer pointer-events-auto"
-                                                    onClick={(e) => { e.stopPropagation(); setSelectedSourceId(source.id) }}
+                                                    className="pointer-events-auto cursor-pointer"
+                                                    onClick={() => setSelectedSourceId(source.id)}
                                                 />
                                             </svg>
                                         )
@@ -830,29 +637,37 @@ export default function SourceManager() {
                                     return null
                                 })}
 
-                                {/* Drawing preview - Rectangle */}
+                                {/* Drawing preview - rectangle */}
                                 {isDrawing && drawStart && drawEnd && (
-                                    <div
-                                        className="absolute border-2 border-blue-600 bg-blue-500/30 pointer-events-none"
-                                        style={{
-                                            left: `${Math.min(drawStart.x, drawEnd.x)}%`,
-                                            top: `${Math.min(drawStart.y, drawEnd.y)}%`,
-                                            width: `${Math.abs(drawEnd.x - drawStart.x)}%`,
-                                            height: `${Math.abs(drawEnd.y - drawStart.y)}%`
-                                        }}
-                                    />
+                                    <div className="absolute border-2 border-blue-600 bg-blue-500/30 pointer-events-none" style={{
+                                        left: `${Math.min(drawStart.x, drawEnd.x)}%`, top: `${Math.min(drawStart.y, drawEnd.y)}%`,
+                                        width: `${Math.abs(drawEnd.x - drawStart.x)}%`, height: `${Math.abs(drawEnd.y - drawStart.y)}%`
+                                    }} />
                                 )}
 
-                                {/* Drawing preview - Polygon */}
+                                {/* Drawing preview - polygon with LINES */}
                                 {polygonPoints.length > 0 && (
                                     <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                        {polygonPoints.map((p, i) => (
-                                            <circle key={i} cx={`${p.x}%`} cy={`${p.y}%`} r="5" fill="#3b82f6" />
-                                        ))}
+                                        {/* Lines connecting points */}
                                         {polygonPoints.length > 1 && (
                                             <polyline
                                                 points={polygonPoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
                                                 fill="none"
+                                                stroke="#3b82f6"
+                                                strokeWidth="3"
+                                            />
+                                        )}
+                                        {/* Points */}
+                                        {polygonPoints.map((p, i) => (
+                                            <circle key={i} cx={`${p.x}%`} cy={`${p.y}%`} r="6" fill="#3b82f6" stroke="white" strokeWidth="2" />
+                                        ))}
+                                        {/* Closing line preview */}
+                                        {polygonPoints.length >= 3 && (
+                                            <line
+                                                x1={`${polygonPoints[polygonPoints.length - 1].x}%`}
+                                                y1={`${polygonPoints[polygonPoints.length - 1].y}%`}
+                                                x2={`${polygonPoints[0].x}%`}
+                                                y2={`${polygonPoints[0].y}%`}
                                                 stroke="#3b82f6"
                                                 strokeWidth="2"
                                                 strokeDasharray="5,5"
@@ -863,149 +678,85 @@ export default function SourceManager() {
                             </div>
                         </div>
 
-                        {/* Sidebar */}
-                        <aside className="w-96 bg-white border-l flex flex-col">
-                            <div className="p-4 border-b bg-slate-50">
-                                <h2 className="font-semibold text-slate-800">
-                                    Sources ({currentPageSources.length})
-                                </h2>
-                            </div>
-
+                        {/* Sidebar - source list */}
+                        <aside className="w-80 bg-white border-l flex flex-col">
+                            <div className="p-3 border-b bg-slate-50 font-semibold">Sources ({currentPageSources.length})</div>
                             <div className="flex-1 overflow-auto">
-                                {currentPageSources.length === 0 ? (
-                                    <div className="p-6 text-center text-slate-400">
-                                        <p>Draw boxes or polygons to clip sources</p>
+                                {currentPageSources.map((source, idx) => (
+                                    <div key={source.id} onClick={() => setSelectedSourceId(source.id)} className={`p-3 border-b cursor-pointer ${selectedSourceId === source.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{idx + 1}</span>
+                                            <span className="text-sm font-medium flex-1 truncate">{source.name}</span>
+                                            <span className="text-xs text-orange-500">{source.rotation}°</span>
+                                            <button onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }} className="text-red-500 text-sm">×</button>
+                                        </div>
+                                        {source.clippedImage && <img src={source.clippedImage} alt="" className="w-full rounded border" />}
                                     </div>
-                                ) : (
-                                    <div className="divide-y">
-                                        {currentPageSources.map((source, idx) => (
-                                            <div
-                                                key={source.id}
-                                                onClick={() => setSelectedSourceId(source.id)}
-                                                className={`p-3 cursor-pointer ${selectedSourceId === source.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}
-                                            >
-                                                {/* Header */}
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                                                            {idx + 1}
-                                                        </span>
-                                                        <span className="text-xs text-slate-500">
-                                                            {source.polygon ? 'Polygon' : 'Rectangle'}
-                                                        </span>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }}
-                                                        className="text-red-500 hover:bg-red-100 rounded p-1"
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-
-                                                {/* CLIPPED IMAGE - Auto generated */}
-                                                {source.clippedImage && (
-                                                    <div className="bg-slate-100 rounded overflow-hidden mb-2">
-                                                        <img
-                                                            src={source.clippedImage}
-                                                            alt={`Source ${idx + 1}`}
-                                                            className="w-full max-h-40 object-contain"
-                                                        />
-                                                    </div>
-                                                )}
-
-                                                {/* ROTATION SLIDER */}
-                                                <div className="mb-2">
-                                                    <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                                                        <span>Rotation</span>
-                                                        <span className="font-mono">{source.rotation}°</span>
-                                                    </div>
-                                                    <input
-                                                        type="range"
-                                                        min="-180"
-                                                        max="180"
-                                                        step="1"
-                                                        value={source.rotation}
-                                                        onChange={(e) => updateSourceRotation(source.id, parseInt(e.target.value))}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-                                                    />
-                                                    <div className="flex justify-between text-[10px] text-slate-400">
-                                                        <span>-180°</span>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); updateSourceRotation(source.id, 0) }}
-                                                            className="text-blue-500 hover:underline"
-                                                        >
-                                                            Reset
-                                                        </button>
-                                                        <span>180°</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Reference input */}
-                                                {selectedSourceId === source.id && (
-                                                    <div className="mt-2 pt-2 border-t">
-                                                        <input
-                                                            type="text"
-                                                            value={source.reference || ''}
-                                                            onChange={(e) => updateSourceReference(source.id, e.target.value)}
-                                                            placeholder="Reference (e.g., Bereishit 1:1)"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="w-full text-xs px-2 py-1 border rounded"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                ))}
                             </div>
                         </aside>
                     </>
                 )}
 
-                {/* PREVIEW STATE - Shows IMAGES not text */}
+                {/* PREVIEW - Clean stacked layout with editable names */}
                 {appState === 'preview' && (
-                    <div className="flex-1 overflow-auto p-8 bg-white">
-                        <div className="max-w-4xl mx-auto">
-                            <h1 className="text-3xl font-serif font-bold text-center mb-8 pb-4 border-b">
-                                Source Sheet
-                            </h1>
+                    <div className="flex-1 overflow-auto bg-white">
+                        <div className="max-w-3xl mx-auto p-8">
+                            <h1 className="text-2xl font-bold text-center mb-6 pb-4 border-b">Source Sheet</h1>
 
                             {sources.length === 0 ? (
-                                <p className="text-center text-slate-400 py-12">No sources to display</p>
+                                <p className="text-center text-slate-400">No sources</p>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-6">
                                     {sources.map((source, idx) => (
                                         <div key={source.id} className="border rounded-lg overflow-hidden shadow-sm">
-                                            {/* Source number and reference */}
-                                            <div className="bg-slate-50 px-4 py-2 flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                                                        {idx + 1}
-                                                    </span>
-                                                    {source.reference && (
-                                                        <span className="font-medium text-sm">{source.reference}</span>
-                                                    )}
-                                                </div>
-                                                <span className="text-xs text-slate-400">
-                                                    Page {source.pageIndex + 1}
-                                                </span>
-                                            </div>
-
-                                            {/* CLIPPED IMAGE - Primary content */}
-                                            {source.clippedImage ? (
-                                                <img
-                                                    src={source.clippedImage}
-                                                    alt={`Source ${idx + 1}`}
-                                                    className="w-full"
+                                            {/* Editable name header */}
+                                            <div className="bg-slate-50 px-4 py-2 flex items-center gap-2">
+                                                <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{idx + 1}</span>
+                                                <input
+                                                    type="text"
+                                                    value={source.name}
+                                                    onChange={(e) => updateSourceName(source.id, e.target.value)}
+                                                    className="flex-1 bg-transparent font-medium border-b border-transparent focus:border-blue-500 focus:outline-none"
+                                                    placeholder="Source name..."
                                                 />
+                                                <button onClick={() => deleteSource(source.id)} className="text-red-500 hover:bg-red-100 rounded px-2">Delete</button>
+                                            </div>
+                                            {/* Image */}
+                                            {source.clippedImage ? (
+                                                <img src={source.clippedImage} alt={source.name} className="w-full" />
                                             ) : (
-                                                <div className="h-32 flex items-center justify-center text-slate-400 bg-slate-100">
-                                                    No preview
-                                                </div>
+                                                <div className="h-24 bg-slate-100 flex items-center justify-center text-slate-400">No preview</div>
                                             )}
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {/* APPLY TO SHIUR */}
+                            {sources.length > 0 && (
+                                <div className="mt-8 p-6 bg-slate-50 rounded-lg border">
+                                    <h2 className="font-semibold mb-4">Attach to Shiur</h2>
+                                    <div className="flex gap-3">
+                                        <select
+                                            value={selectedShiurId || ''}
+                                            onChange={(e) => setSelectedShiurId(e.target.value ? parseInt(e.target.value) : null)}
+                                            className="flex-1 px-3 py-2 border rounded"
+                                            disabled={loadingShiurim}
+                                        >
+                                            <option value="">-- Select a Shiur --</option>
+                                            {shiurim.map(s => (
+                                                <option key={s.id} value={s.id}>{s.title}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            onClick={applyToShiur}
+                                            disabled={!selectedShiurId}
+                                            className="px-6 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            Apply Sources
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1013,10 +764,10 @@ export default function SourceManager() {
                 )}
             </div>
 
-            {/* Drawing mode hint */}
+            {/* Hint for polygon mode */}
             {appState === 'editing' && drawMode === 'polygon' && polygonPoints.length === 0 && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/75 text-white px-6 py-3 rounded-full text-sm">
-                    Click to add points, then click "Finish" to complete the polygon
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-full text-sm">
+                    Click to add points, then click ✓ to finish
                 </div>
             )}
         </div>
