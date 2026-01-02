@@ -1,217 +1,59 @@
 'use client'
 
-import { useState, useCallback, useRef, MouseEvent } from 'react'
-import { Upload, Loader2, X, Save, Trash2, Square, Scissors, Move, RotateCcw, Server, AlertCircle } from 'lucide-react'
+import { useState, useRef, useCallback, MouseEvent } from 'react'
+import { Upload, Loader2, X, Check, Edit3, Search, ExternalLink, Sparkles, Grid3X3, RotateCcw, Download, ChevronLeft, ChevronRight } from 'lucide-react'
 
-interface Source {
+interface DetectedSource {
     id: string
     pageIndex: number
-    x: number
-    y: number
-    width: number
-    height: number
+    box: { x: number; y: number; width: number; height: number }
+    hebrewText: string
+    reference: string | null
+    sefariaData?: any
+    confidence: number
+    isManual?: boolean
 }
 
-type Tool = 'select' | 'draw' | 'slice'
-
-// Python service URL - can be configured
-const PYTHON_SERVICE_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || 'http://localhost:5000'
+type ViewMode = 'edit' | 'preview'
 
 export default function SourceManager() {
-    const [file, setFile] = useState<File | null>(null)
-    const [isProcessing, setIsProcessing] = useState(false)
-    const [sources, setSources] = useState<Source[]>([])
+    // File state
     const [pageImages, setPageImages] = useState<string[]>([])
-    const [selectedSource, setSelectedSource] = useState<string | null>(null)
-    const [activeTool, setActiveTool] = useState<Tool>('draw')
     const [currentPage, setCurrentPage] = useState(0)
-    const [serviceStatus, setServiceStatus] = useState<'unknown' | 'online' | 'offline'>('unknown')
-    const [analysisLog, setAnalysisLog] = useState<string[]>([])
+    const [fileName, setFileName] = useState<string>('')
+
+    // Sources state
+    const [sources, setSources] = useState<DetectedSource[]>([])
+    const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
+
+    // UI state
+    const [isProcessing, setIsProcessing] = useState(false)
+    const [processingStatus, setProcessingStatus] = useState('')
+    const [viewMode, setViewMode] = useState<ViewMode>('edit')
+    const [showQuickGrid, setShowQuickGrid] = useState(false)
 
     // Drawing state
     const [isDrawing, setIsDrawing] = useState(false)
     const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null)
     const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null)
 
-    const addLog = (msg: string) => {
-        setAnalysisLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`])
-    }
+    // Convert PDF to images using PDF.js
+    const pdfToImages = async (file: File): Promise<string[]> => {
+        setProcessingStatus('Converting PDF to images...')
 
-    const checkService = async () => {
-        try {
-            const res = await fetch(`${PYTHON_SERVICE_URL}/health`, { mode: 'cors' })
-            if (res.ok) {
-                setServiceStatus('online')
-                addLog('Python service is ONLINE')
-                return true
-            }
-        } catch (e) {
-            setServiceStatus('offline')
-            addLog('Python service is OFFLINE - using fallback')
-        }
-        return false
-    }
-
-    const analyzeWithPython = async (imageFile: File): Promise<Source[]> => {
-        addLog(`Sending to Python service: ${imageFile.name}`)
-
-        const formData = new FormData()
-        formData.append('file', imageFile)
-
-        const res = await fetch(`${PYTHON_SERVICE_URL}/analyze`, {
-            method: 'POST',
-            body: formData,
-            mode: 'cors'
-        })
-
-        if (!res.ok) {
-            throw new Error(`Service returned ${res.status}`)
-        }
-
-        const data = await res.json() as { count: number; regions: any[] }
-        addLog(`Python found ${data.count} regions`)
-
-        if (!data.regions || data.regions.length === 0) {
-            return []
-        }
-
-        return data.regions.map((r: any, idx: number) => {
-            const [ymin, xmin, ymax, xmax] = r.box_2d
-            return {
-                id: crypto.randomUUID(),
-                pageIndex: 0, // Will be set by caller
-                x: xmin / 10,
-                y: ymin / 10,
-                width: (xmax - xmin) / 10,
-                height: (ymax - ymin) / 10
-            }
-        })
-    }
-
-    const processFile = async (f: File) => {
-        setIsProcessing(true)
-        setSources([])
-        setPageImages([])
-        setAnalysisLog([])
-        addLog('Starting processing...')
-
-        try {
-            // Check Python service
-            const serviceOnline = await checkService()
-
-            if (!serviceOnline) {
-                addLog('Python service is offline!')
-                alert('Python service is not running. Please start it with: python python-service/server.py')
-                setIsProcessing(false)
-                return
-            }
-
-            addLog(`Sending ${f.name} to Python service...`)
-
-            const formData = new FormData()
-            formData.append('file', f)
-
-            const res = await fetch(`${PYTHON_SERVICE_URL}/analyze`, {
-                method: 'POST',
-                body: formData,
-                mode: 'cors'
-            })
-
-            if (!res.ok) {
-                throw new Error(`Service returned ${res.status}`)
-            }
-
-            const data = await res.json() as any
-            addLog(`Response received: ${data.isPDF ? 'PDF' : 'Image'}`)
-
-            const newPageImages: string[] = []
-            const newSources: Source[] = []
-
-            if (data.isPDF && data.pages) {
-                // Handle multi-page PDF response
-                addLog(`Processing ${data.totalPages} pages...`)
-
-                for (let i = 0; i < data.pages.length; i++) {
-                    const page = data.pages[i]
-                    newPageImages.push(page.image)
-
-                    if (page.regions && page.regions.length > 0) {
-                        page.regions.forEach((r: any, idx: number) => {
-                            const [ymin, xmin, ymax, xmax] = r.box_2d
-                            newSources.push({
-                                id: crypto.randomUUID(),
-                                pageIndex: i,
-                                x: xmin / 10,
-                                y: ymin / 10,
-                                width: (xmax - xmin) / 10,
-                                height: (ymax - ymin) / 10
-                            })
-                        })
-                        addLog(`Page ${i + 1}: Found ${page.regions.length} sources`)
-                    } else {
-                        newSources.push({
-                            id: crypto.randomUUID(),
-                            pageIndex: i,
-                            x: 0, y: 0, width: 100, height: 100
-                        })
-                        addLog(`Page ${i + 1}: No sources found, using full page`)
-                    }
-                }
-            } else {
-                // Single image response
-                newPageImages.push(data.image)
-
-                if (data.regions && data.regions.length > 0) {
-                    data.regions.forEach((r: any) => {
-                        const [ymin, xmin, ymax, xmax] = r.box_2d
-                        newSources.push({
-                            id: crypto.randomUUID(),
-                            pageIndex: 0,
-                            x: xmin / 10,
-                            y: ymin / 10,
-                            width: (xmax - xmin) / 10,
-                            height: (ymax - ymin) / 10
-                        })
-                    })
-                    addLog(`Found ${data.regions.length} sources`)
-                } else {
-                    newSources.push({
-                        id: crypto.randomUUID(),
-                        pageIndex: 0,
-                        x: 0, y: 0, width: 100, height: 100
-                    })
-                    addLog('No sources found, using full page')
-                }
-            }
-
-            setPageImages(newPageImages)
-            setSources(newSources)
-            setCurrentPage(0)
-            addLog(`Done! Found ${newSources.length} sources total`)
-
-        } catch (e) {
-            addLog(`Error: ${e}`)
-            alert('Error: ' + e)
-        } finally {
-            setIsProcessing(false)
-        }
-    }
-
-    const pdfToImages = async (pdfFile: File): Promise<{ dataUrl: string; file: File }[]> => {
-        // Dynamic import with proper destructuring
         const pdfjs = await import('pdfjs-dist')
         const pdfjsLib = pdfjs.default || pdfjs
 
-        // Set worker
         if (pdfjsLib.GlobalWorkerOptions) {
             pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
         }
 
-        const arrayBuffer = await pdfFile.arrayBuffer()
+        const arrayBuffer = await file.arrayBuffer()
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        const results: { dataUrl: string; file: File }[] = []
+        const images: string[] = []
 
         for (let i = 1; i <= pdf.numPages; i++) {
+            setProcessingStatus(`Rendering page ${i}/${pdf.numPages}...`)
             const page = await pdf.getPage(i)
             const viewport = page.getViewport({ scale: 2 })
             const canvas = document.createElement('canvas')
@@ -225,18 +67,161 @@ export default function SourceManager() {
                 canvas
             } as any).promise
 
-            const dataUrl = canvas.toDataURL('image/png')
-            const blob = await new Promise<Blob>((r) => canvas.toBlob(b => r(b!), 'image/png'))
-            const file = new File([blob], `page-${i}.png`, { type: 'image/png' })
-
-            results.push({ dataUrl, file })
+            images.push(canvas.toDataURL('image/png'))
         }
-        return results
+
+        return images
     }
 
-    const fileToDataUrl = (f: File): Promise<string> =>
-        new Promise(r => { const reader = new FileReader(); reader.onload = () => r(reader.result as string); reader.readAsDataURL(f) })
+    // Analyze image with Gemini
+    const analyzeWithGemini = async (imageDataUrl: string, pageIndex: number): Promise<DetectedSource[]> => {
+        setProcessingStatus(`Analyzing page ${pageIndex + 1} with AI...`)
 
+        // Convert data URL to blob
+        const response = await fetch(imageDataUrl)
+        const blob = await response.blob()
+        const file = new File([blob], 'page.png', { type: 'image/png' })
+
+        const formData = new FormData()
+        formData.append('image', file)
+
+        try {
+            const res = await fetch('/api/sources/analyze', {
+                method: 'POST',
+                body: formData
+            })
+
+            const data = await res.json()
+
+            if (data.sources && data.sources.length > 0) {
+                return data.sources.map((s: any) => ({
+                    ...s,
+                    pageIndex
+                }))
+            }
+        } catch (error) {
+            console.error('Gemini analysis failed:', error)
+        }
+
+        return []
+    }
+
+    // Look up source in Sefaria
+    const lookupSefaria = async (source: DetectedSource): Promise<any> => {
+        if (!source.reference) return null
+
+        try {
+            const res = await fetch(`/api/sources/sefaria?ref=${encodeURIComponent(source.reference)}`)
+            const data = await res.json()
+            if (data.found) {
+                return data
+            }
+        } catch (error) {
+            console.error('Sefaria lookup failed:', error)
+        }
+        return null
+    }
+
+    // Process uploaded file
+    const processFile = async (file: File) => {
+        setIsProcessing(true)
+        setFileName(file.name)
+        setSources([])
+        setPageImages([])
+        setCurrentPage(0)
+
+        try {
+            // Step 1: Convert to images
+            let images: string[] = []
+
+            if (file.type === 'application/pdf') {
+                images = await pdfToImages(file)
+            } else {
+                // Single image
+                const dataUrl = await new Promise<string>((resolve) => {
+                    const reader = new FileReader()
+                    reader.onload = () => resolve(reader.result as string)
+                    reader.readAsDataURL(file)
+                })
+                images = [dataUrl]
+            }
+
+            setPageImages(images)
+
+            // Step 2: Analyze each page with Gemini
+            const allSources: DetectedSource[] = []
+
+            for (let i = 0; i < images.length; i++) {
+                const pageSources = await analyzeWithGemini(images[i], i)
+
+                if (pageSources.length > 0) {
+                    allSources.push(...pageSources)
+                } else {
+                    // Fallback: full page as single source
+                    allSources.push({
+                        id: `fallback-${i}`,
+                        pageIndex: i,
+                        box: { x: 5, y: 5, width: 90, height: 90 },
+                        hebrewText: '(Auto-detection failed - draw boxes manually)',
+                        reference: null,
+                        confidence: 0
+                    })
+                }
+            }
+
+            // Step 3: Enrich with Sefaria data
+            setProcessingStatus('Looking up sources in Sefaria...')
+            for (const source of allSources) {
+                if (source.reference) {
+                    source.sefariaData = await lookupSefaria(source)
+                }
+            }
+
+            setSources(allSources)
+            setProcessingStatus('')
+
+        } catch (error) {
+            console.error('Processing failed:', error)
+            setProcessingStatus('Error: ' + String(error))
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    // Quick Grid: divide page into rows
+    const applyQuickGrid = (rows: number, cols: number = 1) => {
+        const newSources: DetectedSource[] = []
+        const heightPercent = 90 / rows
+        const widthPercent = 90 / cols
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                newSources.push({
+                    id: `grid-${currentPage}-${r}-${c}`,
+                    pageIndex: currentPage,
+                    box: {
+                        x: 5 + c * widthPercent,
+                        y: 5 + r * heightPercent,
+                        width: widthPercent,
+                        height: heightPercent
+                    },
+                    hebrewText: '',
+                    reference: null,
+                    confidence: 1,
+                    isManual: true
+                })
+            }
+        }
+
+        // Replace sources for current page
+        setSources(prev => [
+            ...prev.filter(s => s.pageIndex !== currentPage),
+            ...newSources
+        ])
+        setShowQuickGrid(false)
+    }
+
+    // Drawing handlers
     const getRelativePos = (e: MouseEvent<HTMLDivElement>): { x: number; y: number } => {
         const rect = e.currentTarget.getBoundingClientRect()
         return {
@@ -246,7 +231,7 @@ export default function SourceManager() {
     }
 
     const handleMouseDown = (e: MouseEvent<HTMLDivElement>) => {
-        if (activeTool !== 'draw') return
+        if (viewMode !== 'edit') return
         const pos = getRelativePos(e)
         setIsDrawing(true)
         setDrawStart(pos)
@@ -254,7 +239,7 @@ export default function SourceManager() {
     }
 
     const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-        if (!isDrawing || activeTool !== 'draw') return
+        if (!isDrawing) return
         setDrawCurrent(getRelativePos(e))
     }
 
@@ -269,11 +254,15 @@ export default function SourceManager() {
         const width = Math.abs(drawCurrent.x - drawStart.x)
         const height = Math.abs(drawCurrent.y - drawStart.y)
 
-        if (width > 2 && height > 2) {
-            const newSource: Source = {
-                id: crypto.randomUUID(),
+        if (width > 3 && height > 3) {
+            const newSource: DetectedSource = {
+                id: `manual-${Date.now()}`,
                 pageIndex: currentPage,
-                x, y, width, height
+                box: { x, y, width, height },
+                hebrewText: '',
+                reference: null,
+                confidence: 1,
+                isManual: true
             }
             setSources(prev => [...prev, newSource])
         }
@@ -283,286 +272,354 @@ export default function SourceManager() {
         setDrawCurrent(null)
     }
 
-    const handleSliceClick = (e: MouseEvent<HTMLDivElement>) => {
-        if (activeTool !== 'slice') return
-        const pos = getRelativePos(e)
-
-        const target = sources.find(s =>
-            s.pageIndex === currentPage &&
-            pos.x >= s.x && pos.x <= s.x + s.width &&
-            pos.y >= s.y && pos.y <= s.y + s.height
-        )
-
-        if (target) {
-            const relativeY = pos.y - target.y
-            if (relativeY < 3 || target.height - relativeY < 3) return
-
-            const topPart: Source = { ...target, height: relativeY }
-            const bottomPart: Source = {
-                id: crypto.randomUUID(),
-                pageIndex: currentPage,
-                x: target.x,
-                y: target.y + relativeY,
-                width: target.width,
-                height: target.height - relativeY
-            }
-
-            setSources(prev => prev.map(s => s.id === target.id ? topPart : s).concat(bottomPart))
-        }
-    }
-
     const deleteSource = (id: string) => {
         setSources(prev => prev.filter(s => s.id !== id))
-        if (selectedSource === id) setSelectedSource(null)
+        if (selectedSourceId === id) setSelectedSourceId(null)
     }
 
     const currentSources = sources.filter(s => s.pageIndex === currentPage)
 
+    // Render
     return (
-        <div className="h-screen flex flex-col bg-gray-100">
-            {/* Top Bar */}
-            <div className="bg-white border-b px-4 py-2 flex items-center justify-between shadow-sm">
+        <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
+            {/* Header */}
+            <header className="bg-white border-b shadow-sm px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <h1 className="font-bold text-gray-800">Source Extractor</h1>
+                    <h1 className="font-bold text-xl text-slate-800 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-blue-600" />
+                        Source Clipper
+                    </h1>
+                    {fileName && (
+                        <span className="text-sm text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                            {fileName}
+                        </span>
+                    )}
+                </div>
 
-                    {/* Service Status */}
-                    <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full ${serviceStatus === 'online' ? 'bg-green-100 text-green-700' :
-                        serviceStatus === 'offline' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-500'
-                        }`}>
-                        <Server className="w-3 h-3" />
-                        {serviceStatus === 'online' ? 'Python Online' :
-                            serviceStatus === 'offline' ? 'Python Offline' :
-                                'Checking...'}
-                    </div>
-
-                    {pageImages.length > 0 && (
-                        <div className="flex items-center gap-2 text-sm">
+                {pageImages.length > 0 && (
+                    <div className="flex items-center gap-3">
+                        {/* Page navigation */}
+                        <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-2 py-1">
                             <button
                                 onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
                                 disabled={currentPage === 0}
-                                className="px-2 py-1 bg-gray-200 rounded disabled:opacity-50"
-                            >←</button>
-                            <span className="text-gray-600">Page {currentPage + 1} / {pageImages.length}</span>
+                                className="p-1 hover:bg-slate-200 rounded disabled:opacity-30"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="text-sm font-medium text-slate-700 min-w-[80px] text-center">
+                                Page {currentPage + 1} / {pageImages.length}
+                            </span>
                             <button
                                 onClick={() => setCurrentPage(Math.min(pageImages.length - 1, currentPage + 1))}
                                 disabled={currentPage === pageImages.length - 1}
-                                className="px-2 py-1 bg-gray-200 rounded disabled:opacity-50"
-                            >→</button>
-                        </div>
-                    )}
-                </div>
-
-                {pageImages.length > 0 && (
-                    <div className="flex items-center gap-2">
-                        <div className="flex bg-gray-200 rounded-lg p-1 gap-1">
-                            <button
-                                onClick={() => setActiveTool('select')}
-                                className={`p-2 rounded ${activeTool === 'select' ? 'bg-white shadow' : 'hover:bg-gray-300'}`}
-                                title="Select"
-                            ><Move className="w-4 h-4" /></button>
-                            <button
-                                onClick={() => setActiveTool('draw')}
-                                className={`p-2 rounded ${activeTool === 'draw' ? 'bg-blue-600 text-white shadow' : 'hover:bg-gray-300'}`}
-                                title="Draw Box"
-                            ><Square className="w-4 h-4" /></button>
-                            <button
-                                onClick={() => setActiveTool('slice')}
-                                className={`p-2 rounded ${activeTool === 'slice' ? 'bg-red-600 text-white shadow' : 'hover:bg-gray-300'}`}
-                                title="Slice"
-                            ><Scissors className="w-4 h-4" /></button>
+                                className="p-1 hover:bg-slate-200 rounded disabled:opacity-30"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
                         </div>
 
-                        <span className="text-sm text-gray-500 ml-2">{currentSources.length} sources</span>
+                        {/* Quick Grid */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowQuickGrid(!showQuickGrid)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                                <Grid3X3 className="w-4 h-4" />
+                                Quick Grid
+                            </button>
+                            {showQuickGrid && (
+                                <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-lg border p-3 z-20">
+                                    <p className="text-xs text-slate-500 mb-2">Split page into:</p>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {[2, 3, 4, 5, 6, 8].map(n => (
+                                            <button
+                                                key={n}
+                                                onClick={() => applyQuickGrid(n)}
+                                                className="px-3 py-1.5 text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded"
+                                            >
+                                                {n} rows
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="border-t mt-2 pt-2">
+                                        <button
+                                            onClick={() => applyQuickGrid(2, 2)}
+                                            className="w-full px-3 py-1.5 text-sm bg-purple-50 hover:bg-purple-100 text-purple-700 rounded"
+                                        >
+                                            2×2 Grid
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
-                        <button
-                            onClick={() => file && processFile(file)}
-                            className="px-3 py-1.5 text-blue-600 hover:bg-blue-50 rounded text-sm flex items-center gap-1"
-                        ><RotateCcw className="w-3 h-3" /> Re-analyze</button>
+                        {/* View mode toggle */}
+                        <div className="flex bg-slate-100 rounded-lg p-0.5">
+                            <button
+                                onClick={() => setViewMode('edit')}
+                                className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'edit' ? 'bg-white shadow text-blue-600' : 'text-slate-600'
+                                    }`}
+                            >
+                                Edit
+                            </button>
+                            <button
+                                onClick={() => setViewMode('preview')}
+                                className={`px-3 py-1 text-sm rounded-md transition-colors ${viewMode === 'preview' ? 'bg-white shadow text-blue-600' : 'text-slate-600'
+                                    }`}
+                            >
+                                Preview
+                            </button>
+                        </div>
 
-                        <button
-                            onClick={() => setSources(sources.filter(s => s.pageIndex !== currentPage))}
-                            className="px-3 py-1.5 text-red-600 hover:bg-red-50 rounded text-sm flex items-center gap-1"
-                        >Clear Page</button>
-
-                        <button className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm font-medium flex items-center gap-1">
-                            <Save className="w-3 h-3" /> Save ({sources.length})
+                        <button className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                            <Download className="w-4 h-4" />
+                            Export ({sources.length})
                         </button>
                     </div>
                 )}
-            </div>
+            </header>
 
             {/* Main Content */}
-            <div className="flex-1 overflow-hidden flex">
-                {/* Canvas */}
-                <div className="flex-1 overflow-auto p-4">
-                    {!file && (
+            <div className="flex-1 flex overflow-hidden">
+                {/* Upload State */}
+                {pageImages.length === 0 && !isProcessing && (
+                    <div className="flex-1 flex items-center justify-center p-8">
                         <div
-                            className="h-full flex items-center justify-center"
-                            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { setFile(f); processFile(f); } }}
-                            onDragOver={e => e.preventDefault()}
+                            onClick={() => document.getElementById('file-input')?.click()}
+                            onDrop={(e) => {
+                                e.preventDefault()
+                                const f = e.dataTransfer.files[0]
+                                if (f) processFile(f)
+                            }}
+                            onDragOver={(e) => e.preventDefault()}
+                            className="relative w-full max-w-lg border-2 border-dashed border-blue-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition-all group"
                         >
-                            <div
-                                onClick={() => document.getElementById('uploader')?.click()}
-                                className="border-2 border-dashed border-gray-300 rounded-xl p-16 flex flex-col items-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition-all"
-                            >
-                                <Upload className="w-10 h-10 text-blue-600 mb-3" />
-                                <h3 className="text-lg font-semibold">Upload Source Sheet</h3>
-                                <p className="text-gray-400 text-sm mt-1">PDF or Image file</p>
-                                <p className="text-gray-300 text-xs mt-3">Python service auto-detects sources</p>
-                                <input id="uploader" type="file" className="hidden" accept=".pdf,image/*"
-                                    onChange={e => {
-                                        console.log('File selected:', e.target.files?.[0]?.name);
-                                        const f = e.target.files?.[0];
-                                        if (f) {
-                                            console.log('Processing file:', f.name, f.type);
-                                            setFile(f);
-                                            processFile(f);
-                                        }
-                                    }} />
+                            <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                                <Upload className="w-8 h-8 text-blue-600" />
                             </div>
-                        </div>
-                    )}
-
-                    {isProcessing && (
-                        <div className="h-full flex items-center justify-center">
-                            <div className="text-center">
-                                <Loader2 className="w-10 h-10 text-blue-600 animate-spin mx-auto mb-3" />
-                                <p className="text-gray-600 font-medium">Analyzing with OpenCV...</p>
-                                <div className="mt-4 text-left bg-gray-900 text-green-400 text-xs p-3 rounded max-w-md font-mono max-h-40 overflow-auto">
-                                    {analysisLog.map((log, i) => <div key={i}>{log}</div>)}
-                                </div>
+                            <h3 className="text-xl font-semibold text-slate-800 mb-2">Upload Source Sheet</h3>
+                            <p className="text-slate-500 mb-4">PDF or Image file</p>
+                            <div className="flex items-center justify-center gap-2 text-sm text-blue-600">
+                                <Sparkles className="w-4 h-4" />
+                                AI auto-detects sources + OCR + Sefaria lookup
                             </div>
-                        </div>
-                    )}
-
-                    {!isProcessing && pageImages.length > 0 && (
-                        <div
-                            className={`relative inline-block max-w-full ${activeTool === 'draw' ? 'cursor-crosshair' :
-                                activeTool === 'slice' ? 'cursor-row-resize' : 'cursor-default'
-                                }`}
-                            onMouseDown={handleMouseDown}
-                            onMouseMove={handleMouseMove}
-                            onMouseUp={handleMouseUp}
-                            onMouseLeave={handleMouseUp}
-                            onClick={activeTool === 'slice' ? handleSliceClick : undefined}
-                        >
-                            <img
-                                src={pageImages[currentPage]}
-                                className="max-h-[calc(100vh-120px)] w-auto shadow-lg rounded select-none pointer-events-none"
-                                draggable={false}
+                            <input
+                                id="file-input"
+                                type="file"
+                                className="hidden"
+                                accept=".pdf,image/*"
+                                onChange={(e) => {
+                                    const f = e.target.files?.[0]
+                                    if (f) processFile(f)
+                                }}
                             />
+                        </div>
+                    </div>
+                )}
 
-                            {currentSources.map((source, idx) => (
-                                <div
-                                    key={source.id}
-                                    className={`absolute border-2 ${selectedSource === source.id
-                                        ? 'border-green-500 bg-green-500/10'
-                                        : 'border-blue-500 bg-blue-500/5 hover:bg-blue-500/10'
-                                        } transition-colors group`}
-                                    style={{
-                                        left: `${source.x}%`,
-                                        top: `${source.y}%`,
-                                        width: `${source.width}%`,
-                                        height: `${source.height}%`,
-                                    }}
-                                    onClick={(e) => {
-                                        if (activeTool === 'select') {
-                                            e.stopPropagation()
-                                            setSelectedSource(source.id)
-                                        }
-                                    }}
-                                >
-                                    <span className="absolute top-1 left-1 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded font-bold">
-                                        {idx + 1}
-                                    </span>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); deleteSource(source.id); }}
-                                        className="absolute top-1 right-1 bg-red-600 text-white p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                {/* Processing State */}
+                {isProcessing && (
+                    <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center">
+                            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+                            <p className="text-lg font-medium text-slate-700">{processingStatus || 'Processing...'}</p>
+                            <p className="text-sm text-slate-500 mt-2">AI is analyzing your source sheet</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Editor View */}
+                {!isProcessing && pageImages.length > 0 && viewMode === 'edit' && (
+                    <>
+                        {/* Canvas */}
+                        <div className="flex-1 overflow-auto p-6 flex items-start justify-center">
+                            <div
+                                className="relative inline-block cursor-crosshair"
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
+                            >
+                                <img
+                                    src={pageImages[currentPage]}
+                                    className="max-h-[calc(100vh-150px)] w-auto shadow-xl rounded-lg select-none pointer-events-none"
+                                    draggable={false}
+                                />
+
+                                {/* Source boxes */}
+                                {currentSources.map((source, idx) => (
+                                    <div
+                                        key={source.id}
+                                        onClick={() => setSelectedSourceId(source.id)}
+                                        className={`absolute border-2 transition-all cursor-pointer ${selectedSourceId === source.id
+                                                ? 'border-green-500 bg-green-500/15 shadow-lg'
+                                                : source.sefariaData
+                                                    ? 'border-purple-500 bg-purple-500/10'
+                                                    : 'border-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
+                                            }`}
+                                        style={{
+                                            left: `${source.box.x}%`,
+                                            top: `${source.box.y}%`,
+                                            width: `${source.box.width}%`,
+                                            height: `${source.box.height}%`,
+                                        }}
                                     >
-                                        <X className="w-3 h-3" />
-                                    </button>
+                                        <span className="absolute -top-2 -left-2 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-bold shadow">
+                                            {idx + 1}
+                                        </span>
+                                        {source.sefariaData && (
+                                            <span className="absolute -top-2 -right-2 bg-purple-600 text-white text-xs p-0.5 rounded-full">
+                                                <Check className="w-3 h-3" />
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); deleteSource(source.id); }}
+                                            className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded opacity-0 hover:opacity-100 transition-opacity"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+
+                                {/* Drawing preview */}
+                                {isDrawing && drawStart && drawCurrent && (
+                                    <div
+                                        className="absolute border-2 border-blue-600 bg-blue-500/20 pointer-events-none"
+                                        style={{
+                                            left: `${Math.min(drawStart.x, drawCurrent.x)}%`,
+                                            top: `${Math.min(drawStart.y, drawCurrent.y)}%`,
+                                            width: `${Math.abs(drawCurrent.x - drawStart.x)}%`,
+                                            height: `${Math.abs(drawCurrent.y - drawStart.y)}%`,
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Sidebar */}
+                        <aside className="w-80 bg-white border-l overflow-auto flex flex-col">
+                            <div className="p-4 border-b bg-slate-50">
+                                <h2 className="font-semibold text-slate-800">Sources ({currentSources.length})</h2>
+                                <p className="text-xs text-slate-500 mt-0.5">Click to select, draw to add new</p>
+                            </div>
+
+                            <div className="flex-1 overflow-auto divide-y">
+                                {currentSources.map((source, idx) => (
+                                    <div
+                                        key={source.id}
+                                        onClick={() => setSelectedSourceId(source.id)}
+                                        className={`p-3 cursor-pointer transition-colors ${selectedSourceId === source.id ? 'bg-blue-50' : 'hover:bg-slate-50'
+                                            }`}
+                                    >
+                                        <div className="flex items-start justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                                                    {idx + 1}
+                                                </span>
+                                                {source.reference ? (
+                                                    <span className="text-sm font-medium text-slate-800">{source.reference}</span>
+                                                ) : (
+                                                    <span className="text-sm text-slate-400 italic">No reference detected</span>
+                                                )}
+                                            </div>
+                                            {source.sefariaData && (
+                                                <a
+                                                    href={source.sefariaData.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-purple-600 hover:text-purple-700"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                </a>
+                                            )}
+                                        </div>
+
+                                        {source.hebrewText && (
+                                            <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed" dir="rtl">
+                                                {source.hebrewText.substring(0, 100)}...
+                                            </p>
+                                        )}
+
+                                        <div className="flex items-center gap-2 mt-2">
+                                            {source.sefariaData ? (
+                                                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                    <Check className="w-3 h-3" /> Sefaria
+                                                </span>
+                                            ) : source.reference ? (
+                                                <button className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-slate-200">
+                                                    <Search className="w-3 h-3" /> Look up
+                                                </button>
+                                            ) : null}
+                                            <span className="text-xs text-slate-400">
+                                                {Math.round(source.confidence * 100)}% conf
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {currentSources.length === 0 && (
+                                    <div className="p-8 text-center text-slate-400">
+                                        <Grid3X3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                        <p className="text-sm">Draw boxes around sources<br />or use Quick Grid</p>
+                                    </div>
+                                )}
+                            </div>
+                        </aside>
+                    </>
+                )}
+
+                {/* Preview Mode */}
+                {!isProcessing && pageImages.length > 0 && viewMode === 'preview' && (
+                    <div className="flex-1 overflow-auto p-8">
+                        <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg border p-8">
+                            <h2 className="text-2xl font-serif font-bold text-center text-slate-800 mb-8 pb-4 border-b">
+                                Source Sheet Preview
+                            </h2>
+
+                            {sources.map((source, idx) => (
+                                <div key={source.id} className="mb-6 pb-6 border-b last:border-0">
+                                    <div className="flex items-baseline gap-3 mb-3">
+                                        <span className="text-lg font-bold text-blue-600">{idx + 1}.</span>
+                                        {source.reference && (
+                                            <span className="text-lg font-semibold text-slate-800">{source.reference}</span>
+                                        )}
+                                        {source.sefariaData && (
+                                            <a
+                                                href={source.sefariaData.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-sm text-purple-600 hover:underline"
+                                            >
+                                                View on Sefaria →
+                                            </a>
+                                        )}
+                                    </div>
+
+                                    <div className="bg-slate-50 rounded-lg p-4" dir="rtl">
+                                        <p className="text-lg leading-relaxed text-slate-800 font-serif">
+                                            {source.sefariaData?.hebrewText || source.hebrewText || '(No text extracted)'}
+                                        </p>
+                                    </div>
+
+                                    {source.sefariaData?.text && (
+                                        <div className="mt-3 text-sm text-slate-600 italic">
+                                            {source.sefariaData.text.substring(0, 200)}...
+                                        </div>
+                                    )}
                                 </div>
                             ))}
 
-                            {isDrawing && drawStart && drawCurrent && (
-                                <div
-                                    className="absolute border-2 border-blue-600 bg-blue-500/20 pointer-events-none"
-                                    style={{
-                                        left: `${Math.min(drawStart.x, drawCurrent.x)}%`,
-                                        top: `${Math.min(drawStart.y, drawCurrent.y)}%`,
-                                        width: `${Math.abs(drawCurrent.x - drawStart.x)}%`,
-                                        height: `${Math.abs(drawCurrent.y - drawStart.y)}%`,
-                                    }}
-                                />
+                            {sources.length === 0 && (
+                                <p className="text-center text-slate-400 py-12">
+                                    No sources detected yet
+                                </p>
                             )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Sidebar */}
-                {pageImages.length > 0 && (
-                    <div className="w-72 bg-white border-l overflow-auto flex flex-col">
-                        {/* Sources List */}
-                        <div className="flex-1 overflow-auto">
-                            <div className="p-3 border-b bg-gray-50 sticky top-0">
-                                <h3 className="font-semibold text-sm text-gray-700">Sources ({currentSources.length})</h3>
-                            </div>
-                            {currentSources.length === 0 ? (
-                                <div className="p-4 text-center text-gray-400 text-sm">
-                                    <Square className="w-6 h-6 mx-auto mb-2 opacity-50" />
-                                    Draw boxes around sources
-                                </div>
-                            ) : (
-                                <div className="divide-y">
-                                    {currentSources.map((source, idx) => (
-                                        <div
-                                            key={source.id}
-                                            className={`p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 ${selectedSource === source.id ? 'bg-blue-50' : ''
-                                                }`}
-                                            onClick={() => setSelectedSource(source.id)}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded flex items-center justify-center font-bold">
-                                                    {idx + 1}
-                                                </span>
-                                                <span className="text-sm text-gray-600">
-                                                    {Math.round(source.width)}% × {Math.round(source.height)}%
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); deleteSource(source.id); }}
-                                                className="text-gray-400 hover:text-red-600"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Analysis Log */}
-                        <div className="border-t">
-                            <div className="p-2 bg-gray-900 text-green-400 text-[10px] font-mono max-h-32 overflow-auto">
-                                {analysisLog.length === 0 ? (
-                                    <span className="text-gray-500">Analysis log will appear here</span>
-                                ) : (
-                                    analysisLog.map((log, i) => <div key={i}>{log}</div>)
-                                )}
-                            </div>
                         </div>
                     </div>
                 )}
             </div>
-
-            {/* Instructions overlay */}
-            {pageImages.length > 0 && currentSources.length === 0 && !isProcessing && (
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/80 text-white px-6 py-3 rounded-full text-sm flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    Auto-detection found nothing. Draw boxes manually.
-                </div>
-            )}
         </div>
     )
 }
