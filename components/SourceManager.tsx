@@ -787,6 +787,18 @@ export default function SourceManager() {
                                                 strokeWidth="2"
                                             />
                                         )}
+                                        {/* Live line from last point to mouse cursor */}
+                                        {polygonPoints.length > 0 && mousePos && (
+                                            <line
+                                                x1={`${polygonPoints[polygonPoints.length - 1].x}%`}
+                                                y1={`${polygonPoints[polygonPoints.length - 1].y}%`}
+                                                x2={`${(mousePos.x / (canvasRef.current?.offsetWidth || 1)) * 100}%`}
+                                                y2={`${(mousePos.y / (canvasRef.current?.offsetHeight || 1)) * 100}%`}
+                                                stroke="#2563eb"
+                                                strokeWidth="2"
+                                                strokeDasharray="4,4"
+                                            />
+                                        )}
                                         {/* Points - blue dots */}
                                         {polygonPoints.map((p, i) => (
                                             <circle

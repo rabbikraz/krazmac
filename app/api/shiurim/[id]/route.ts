@@ -106,40 +106,15 @@ export async function PUT(
     // Check if we're setting a new slug that should become the ID
     let newId = id
     if (data.slug && data.slug !== id) {
-      // The slug becomes the new ID
       newId = data.slug
-
-      // First, update platform_links to reference the new ID
-      await db
-        .update(platformLinks)
-        .set({ shiurId: newId })
-        .where(eq(platformLinks.shiurId, id))
-        .execute()
-
-      // Delete the old shiur record
-      await db
-        .delete(shiurim)
-        .where(eq(shiurim.id, id))
-        .execute()
-
-      // Get the old shiur data first
-      // We need to create a new record with the slug as ID
-      const oldShiur = await db
-        .select()
-        .from(shiurim)
-        .where(eq(shiurim.id, id))
-        .get()
-
-      if (!oldShiur) {
-        // The shiur was already deleted, need to insert fresh
-        // This shouldn't happen in normal flow, but handle it
-      }
     }
 
-    // Build update data - slug is now null since ID IS the slug
+    // Build update data
     const updateData: any = {}
     if (data.title !== undefined) updateData.title = data.title
-    updateData.slug = null // Clear slug since ID is now the slug
+    // Slug column is always null if ID serves as the slug.
+    updateData.slug = null
+
     if (data.description !== undefined) updateData.description = data.description
     if (data.blurb !== undefined) updateData.blurb = data.blurb
     if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl
@@ -152,9 +127,9 @@ export async function PUT(
     updateData.updatedAt = new Date()
 
     let updatedShiur
+
     if (newId !== id) {
-      // Need to create new record with new ID and delete old
-      // Get current shiur data
+      // 1. Get current shiur data BEFORE doing anything
       const currentShiur = await db
         .select()
         .from(shiurim)
@@ -162,7 +137,7 @@ export async function PUT(
         .get()
 
       if (currentShiur) {
-        // Insert new record with new ID
+        // 2. Insert new record with new ID first
         await db.insert(shiurim).values({
           id: newId,
           guid: currentShiur.guid,
@@ -181,17 +156,19 @@ export async function PUT(
           updatedAt: new Date(),
         }).execute()
 
-        // Delete old record
-        await db.delete(shiurim).where(eq(shiurim.id, id)).execute()
-
-        // Update platform_links to new ID
+        // 3. Update platform_links to point to new ID
         await db
           .update(platformLinks)
           .set({ shiurId: newId })
           .where(eq(platformLinks.shiurId, id))
           .execute()
 
+        // 4. Delete old record
+        await db.delete(shiurim).where(eq(shiurim.id, id)).execute()
+
         updatedShiur = await db.select().from(shiurim).where(eq(shiurim.id, newId)).get()
+      } else {
+        return NextResponse.json({ error: 'Shiur not found' }, { status: 404 })
       }
     } else {
       // Normal update without ID change

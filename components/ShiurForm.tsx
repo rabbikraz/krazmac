@@ -245,7 +245,14 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
               <input
                 type="url"
                 value={formData.sourceDoc}
-                onChange={(e) => setFormData({ ...formData, sourceDoc: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.startsWith('sources:') || val.trim().startsWith('[')) {
+                    alert("⚠️ It looks like you pasted Clipped Sources data here.\n\nPlease stick this in the 'Clipped Sources' section instead!");
+                    return;
+                  }
+                  setFormData({ ...formData, sourceDoc: val })
+                }}
                 placeholder="https://drive.google.com/..."
                 className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               />
