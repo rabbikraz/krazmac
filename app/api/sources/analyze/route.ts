@@ -1,38 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Edge runtime for Cloudflare compatibility
 export const runtime = 'edge'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
-interface DetectedSource {
-    id: string
-    box: { x: number; y: number; width: number; height: number }
-    hebrewText: string
-    reference: string | null
-    confidence: number
+interface GeminiResponse {
+    candidates?: Array<{
+        content?: {
+            parts?: Array<{
+                text?: string
+            }>
+        }
+    }>
 }
 
 export async function POST(request: NextRequest) {
     if (!GEMINI_API_KEY) {
-        return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 })
+        return NextResponse.json({
+            success: false,
+            error: 'GEMINI_API_KEY not configured in environment variables',
+            sources: []
+        })
     }
 
     try {
         const formData = await request.formData()
-        const file = formData.get('image') as File
+        const imageFile = formData.get('image') as File
 
-        if (!file) {
-            return NextResponse.json({ error: 'No image provided' }, { status: 400 })
+        if (!imageFile) {
+            return NextResponse.json({
+                success: false,
+                error: 'No image file provided',
+                sources: []
+            })
         }
 
-        // Convert image to base64
-        const bytes = await file.arrayBuffer()
-        const base64 = Buffer.from(bytes).toString('base64')
-        const mimeType = file.type || 'image/png'
+        // Convert to base64
+        const arrayBuffer = await imageFile.arrayBuffer()
+        const base64 = btoa(
+            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+        )
+        const mimeType = imageFile.type || 'image/png'
 
-        // Call Gemini Vision API
-        const response = await fetch(
+        // Call Gemini API
+        const geminiResponse = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
@@ -41,35 +52,21 @@ export async function POST(request: NextRequest) {
                     contents: [{
                         parts: [
                             {
-                                text: `You are analyzing a Torah source sheet image. Your task is to:
+                                text: `Analyze this Torah/Jewish source sheet image. Find all distinct text sources on the page.
 
-1. DETECT every distinct source/text block on the page
-2. For each source, provide:
-   - Bounding box coordinates as percentages (0-100) of image dimensions
-   - The Hebrew text content (OCR it accurately)
-   - The source reference if identifiable (e.g., "Rashi on Bereishit 1:1", "Gemara Berachot 5a", "Rambam Hilchot Shabbat 1:1")
+For EACH source you find, return:
+1. box_2d: Bounding box as [ymin, xmin, ymax, xmax] where values are 0-1000 (normalized coordinates)
+2. text: The Hebrew/Aramaic text content (OCR it)
+3. reference: The source reference if you can identify it (e.g., "Bereishit 1:1", "Rashi on Shemot 3:14", "Gemara Berachot 5a")
 
-IMPORTANT DETECTION RULES:
-- Each numbered source (①, ②, 1., 2., etc.) is a SEPARATE source
-- Headers/titles with their text below count as ONE source
-- Ignore page numbers, watermarks, and decorative elements
-- Sources can be in Hebrew, Aramaic, or English
-- Look for circled numbers, brackets, or indentation to identify source boundaries
+Detection rules:
+- Each numbered section (1, 2, 3 or א, ב, ג or circled numbers) is a SEPARATE source
+- Include headers/titles with their associated text as ONE source
+- Skip page numbers, decorative elements, and watermarks
+- Sources may be in Hebrew, Aramaic, or English
 
-Return ONLY valid JSON in this exact format:
-{
-  "sources": [
-    {
-      "box": { "x": 5, "y": 10, "width": 45, "height": 20 },
-      "hebrewText": "בראשית ברא אלהים...",
-      "reference": "Bereishit 1:1",
-      "confidence": 0.95
-    }
-  ]
-}
-
-If you cannot detect any sources, return: { "sources": [] }
-Do NOT include any text before or after the JSON.`
+Return ONLY a JSON object in this exact format, no other text:
+{"sources":[{"box_2d":[ymin,xmin,ymax,xmax],"text":"...","reference":"..."}]}`
                             },
                             {
                                 inlineData: {
@@ -81,63 +78,74 @@ Do NOT include any text before or after the JSON.`
                     }],
                     generationConfig: {
                         temperature: 0.1,
-                        topP: 0.8,
                         maxOutputTokens: 8192
                     }
                 })
             }
         )
 
-        if (!response.ok) {
-            const errorText = await response.text()
-            console.error('Gemini API error:', errorText)
+        if (!geminiResponse.ok) {
+            const errorText = await geminiResponse.text()
+            console.error('Gemini error:', errorText)
             return NextResponse.json({
-                error: 'Gemini API error',
-                details: errorText,
+                success: false,
+                error: `Gemini API error: ${geminiResponse.status}`,
                 sources: []
-            }, { status: 200 }) // Return 200 with empty sources to allow fallback
+            })
         }
 
-        const data = await response.json()
-
-        // Extract text from response
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        const geminiData: GeminiResponse = await geminiResponse.json()
+        const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
         // Parse JSON from response
-        let sources: DetectedSource[] = []
+        let sources: Array<{ box_2d?: number[]; text?: string; reference?: string }> = []
         try {
-            // Find JSON in response (handle markdown code blocks)
-            const jsonMatch = text.match(/\{[\s\S]*\}/)
+            // Extract JSON from response (handle markdown code blocks)
+            let jsonStr = responseText
+            const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/)
             if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0])
-                sources = (parsed.sources || []).map((s: any, i: number) => ({
-                    id: `source-${Date.now()}-${i}`,
-                    box: {
-                        x: Math.max(0, Math.min(100, s.box?.x || 0)),
-                        y: Math.max(0, Math.min(100, s.box?.y || 0)),
-                        width: Math.max(1, Math.min(100, s.box?.width || 10)),
-                        height: Math.max(1, Math.min(100, s.box?.height || 10))
-                    },
-                    hebrewText: s.hebrewText || '',
-                    reference: s.reference || null,
-                    confidence: s.confidence || 0.5
-                }))
+                jsonStr = jsonMatch[1]
+            } else {
+                const plainMatch = responseText.match(/\{[\s\S]*\}/)
+                if (plainMatch) {
+                    jsonStr = plainMatch[0]
+                }
             }
+
+            const parsed = JSON.parse(jsonStr) as { sources?: typeof sources }
+            sources = parsed.sources || []
         } catch (parseError) {
-            console.error('Failed to parse Gemini response:', text)
+            console.error('JSON parse error:', parseError, 'Response:', responseText.substring(0, 500))
         }
 
+        // Normalize and validate sources
+        const normalizedSources = sources.map((s, idx) => {
+            const box = s.box_2d || [0, 0, 1000, 1000]
+            return {
+                id: `gemini-${Date.now()}-${idx}`,
+                box: {
+                    x: Math.max(0, Math.min(100, box[1] / 10)),
+                    y: Math.max(0, Math.min(100, box[0] / 10)),
+                    width: Math.max(5, Math.min(100, (box[3] - box[1]) / 10)),
+                    height: Math.max(5, Math.min(100, (box[2] - box[0]) / 10))
+                },
+                text: s.text || '',
+                reference: s.reference || null
+            }
+        }).filter(s => s.box.width > 0 && s.box.height > 0)
+
         return NextResponse.json({
-            sources,
-            rawResponse: text.substring(0, 500) // For debugging
+            success: true,
+            sources: normalizedSources,
+            count: normalizedSources.length
         })
 
     } catch (error) {
         console.error('Analysis error:', error)
         return NextResponse.json({
-            error: 'Analysis failed',
-            details: String(error),
+            success: false,
+            error: String(error),
             sources: []
-        }, { status: 200 })
+        })
     }
 }
