@@ -370,6 +370,7 @@ export default function SourceManager() {
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         const pos = getPos(e)
+        setMousePos(pos) // Track mouse position for live preview lines
 
         // Rotating - with damping for less sensitivity
         if (editMode === 'rotate' && editingSourceId && editStart) {
@@ -792,8 +793,8 @@ export default function SourceManager() {
                                             <line
                                                 x1={`${polygonPoints[polygonPoints.length - 1].x}%`}
                                                 y1={`${polygonPoints[polygonPoints.length - 1].y}%`}
-                                                x2={`${(mousePos.x / (canvasRef.current?.offsetWidth || 1)) * 100}%`}
-                                                y2={`${(mousePos.y / (canvasRef.current?.offsetHeight || 1)) * 100}%`}
+                                                x2={`${mousePos.x}%`}
+                                                y2={`${mousePos.y}%`}
                                                 stroke="#2563eb"
                                                 strokeWidth="2"
                                                 strokeDasharray="4,4"
