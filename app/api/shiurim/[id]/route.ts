@@ -103,10 +103,43 @@ export async function PUT(
 
     const db = getDb(d1)
 
-    // Update shiur
+    // Check if we're setting a new slug that should become the ID
+    let newId = id
+    if (data.slug && data.slug !== id) {
+      // The slug becomes the new ID
+      newId = data.slug
+
+      // First, update platform_links to reference the new ID
+      await db
+        .update(platformLinks)
+        .set({ shiurId: newId })
+        .where(eq(platformLinks.shiurId, id))
+        .execute()
+
+      // Delete the old shiur record
+      await db
+        .delete(shiurim)
+        .where(eq(shiurim.id, id))
+        .execute()
+
+      // Get the old shiur data first
+      // We need to create a new record with the slug as ID
+      const oldShiur = await db
+        .select()
+        .from(shiurim)
+        .where(eq(shiurim.id, id))
+        .get()
+
+      if (!oldShiur) {
+        // The shiur was already deleted, need to insert fresh
+        // This shouldn't happen in normal flow, but handle it
+      }
+    }
+
+    // Build update data - slug is now null since ID IS the slug
     const updateData: any = {}
     if (data.title !== undefined) updateData.title = data.title
-    if (data.slug !== undefined) updateData.slug = data.slug || null
+    updateData.slug = null // Clear slug since ID is now the slug
     if (data.description !== undefined) updateData.description = data.description
     if (data.blurb !== undefined) updateData.blurb = data.blurb
     if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl
@@ -118,19 +151,64 @@ export async function PUT(
     if (data.thumbnail !== undefined) updateData.thumbnail = data.thumbnail || null
     updateData.updatedAt = new Date()
 
-    const updatedShiur = await db
-      .update(shiurim)
-      .set(updateData)
-      .where(eq(shiurim.id, id))
-      .returning()
-      .get()
+    let updatedShiur
+    if (newId !== id) {
+      // Need to create new record with new ID and delete old
+      // Get current shiur data
+      const currentShiur = await db
+        .select()
+        .from(shiurim)
+        .where(eq(shiurim.id, id))
+        .get()
 
-    // Update or create platform links
+      if (currentShiur) {
+        // Insert new record with new ID
+        await db.insert(shiurim).values({
+          id: newId,
+          guid: currentShiur.guid,
+          slug: null, // ID is now the slug
+          title: data.title ?? currentShiur.title,
+          description: data.description ?? currentShiur.description,
+          blurb: data.blurb ?? currentShiur.blurb,
+          audioUrl: data.audioUrl ?? currentShiur.audioUrl,
+          sourceDoc: data.sourceDoc ?? currentShiur.sourceDoc,
+          sourcesJson: data.sourcesJson ?? currentShiur.sourcesJson,
+          pubDate: data.pubDate ? new Date(data.pubDate) : currentShiur.pubDate,
+          duration: data.duration ?? currentShiur.duration,
+          link: data.link ?? currentShiur.link,
+          thumbnail: data.thumbnail ?? currentShiur.thumbnail,
+          createdAt: currentShiur.createdAt,
+          updatedAt: new Date(),
+        }).execute()
+
+        // Delete old record
+        await db.delete(shiurim).where(eq(shiurim.id, id)).execute()
+
+        // Update platform_links to new ID
+        await db
+          .update(platformLinks)
+          .set({ shiurId: newId })
+          .where(eq(platformLinks.shiurId, id))
+          .execute()
+
+        updatedShiur = await db.select().from(shiurim).where(eq(shiurim.id, newId)).get()
+      }
+    } else {
+      // Normal update without ID change
+      updatedShiur = await db
+        .update(shiurim)
+        .set(updateData)
+        .where(eq(shiurim.id, id))
+        .returning()
+        .get()
+    }
+
+    // Update or create platform links - use newId since ID may have changed
     if (data.platformLinks) {
       const existingLinks = await db
         .select()
         .from(platformLinks)
-        .where(eq(platformLinks.shiurId, id))
+        .where(eq(platformLinks.shiurId, newId))
         .get()
 
       if (existingLinks) {
@@ -140,13 +218,13 @@ export async function PUT(
             ...data.platformLinks,
             updatedAt: new Date(),
           })
-          .where(eq(platformLinks.shiurId, id))
+          .where(eq(platformLinks.shiurId, newId))
           .execute()
       } else {
         await db
           .insert(platformLinks)
           .values({
-            shiurId: id,
+            shiurId: newId,
             ...data.platformLinks,
           })
           .execute()
@@ -157,11 +235,12 @@ export async function PUT(
     const links = await db
       .select()
       .from(platformLinks)
-      .where(eq(platformLinks.shiurId, id))
+      .where(eq(platformLinks.shiurId, newId))
       .get()
 
     return NextResponse.json({
       ...updatedShiur,
+      newId: newId !== id ? newId : undefined, // Return new ID if changed so frontend can redirect
       platformLinks: links || null,
     })
   } catch (error) {

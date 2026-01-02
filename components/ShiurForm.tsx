@@ -101,10 +101,16 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
         body: JSON.stringify(payload),
       })
 
-      const data = await response.json() as { error?: string }
+      const data = await response.json() as { error?: string; newId?: string }
 
       if (!response.ok) {
         setError(data.error || 'Error saving shiur')
+        return
+      }
+
+      // If the ID was changed to a slug, redirect to the new URL
+      if (data.newId) {
+        window.location.href = `/admin?edit=${data.newId}`
         return
       }
 
