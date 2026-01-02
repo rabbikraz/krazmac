@@ -99,6 +99,12 @@ export default function SourceManager() {
     const [drawStart, setDrawStart] = useState<{ x: number, y: number } | null>(null)
     const [drawEnd, setDrawEnd] = useState<{ x: number, y: number } | null>(null)
 
+    // Editing state (drag/resize)
+    const [editMode, setEditMode] = useState<'none' | 'drag' | 'resize'>('none')
+    const [editingSourceId, setEditingSourceId] = useState<string | null>(null)
+    const [editStart, setEditStart] = useState<{ x: number, y: number, box: { x: number, y: number, width: number, height: number } } | null>(null)
+    const [resizeHandle, setResizeHandle] = useState<'nw' | 'ne' | 'sw' | 'se' | null>(null)
+
     const canvasRef = useRef<HTMLDivElement>(null)
 
     // ============================================================================
@@ -229,19 +235,44 @@ export default function SourceManager() {
     }
 
     // ============================================================================
-    // DRAWING
+    // DRAWING AND EDITING
     // ============================================================================
 
-    const getRelativePosition = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect()
+    const getRelativePosition = (e: React.MouseEvent<HTMLDivElement>, container?: HTMLDivElement | null) => {
+        const target = container || canvasRef.current
+        if (!target) return { x: 0, y: 0 }
+        const rect = target.getBoundingClientRect()
         return {
-            x: ((e.clientX - rect.left) / rect.width) * 100,
-            y: ((e.clientY - rect.top) / rect.height) * 100
+            x: Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)),
+            y: Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100))
         }
+    }
+
+    // Start dragging a box
+    const startDrag = (e: React.MouseEvent<HTMLDivElement>, source: Source) => {
+        e.stopPropagation()
+        const pos = getRelativePosition(e)
+        setEditMode('drag')
+        setEditingSourceId(source.id)
+        setEditStart({ x: pos.x, y: pos.y, box: { ...source.box } })
+        setSelectedSourceId(source.id)
+    }
+
+    // Start resizing a box
+    const startResize = (e: React.MouseEvent<HTMLDivElement>, source: Source, handle: 'nw' | 'ne' | 'sw' | 'se') => {
+        e.stopPropagation()
+        const pos = getRelativePosition(e)
+        setEditMode('resize')
+        setEditingSourceId(source.id)
+        setResizeHandle(handle)
+        setEditStart({ x: pos.x, y: pos.y, box: { ...source.box } })
+        setSelectedSourceId(source.id)
     }
 
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
         if (appState !== 'editing') return
+        if (editMode !== 'none') return // Already editing
+
         const pos = getRelativePosition(e)
         setIsDrawing(true)
         setDrawStart(pos)
@@ -250,11 +281,80 @@ export default function SourceManager() {
     }
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isDrawing) return
-        setDrawEnd(getRelativePosition(e))
+        const pos = getRelativePosition(e)
+
+        // Handle box editing (drag/resize)
+        if (editMode !== 'none' && editingSourceId && editStart) {
+            const deltaX = pos.x - editStart.x
+            const deltaY = pos.y - editStart.y
+
+            setSources(prev => prev.map(s => {
+                if (s.id !== editingSourceId) return s
+
+                if (editMode === 'drag') {
+                    // Move the box
+                    return {
+                        ...s,
+                        box: {
+                            ...s.box,
+                            x: Math.max(0, Math.min(100 - editStart.box.width, editStart.box.x + deltaX)),
+                            y: Math.max(0, Math.min(100 - editStart.box.height, editStart.box.y + deltaY))
+                        }
+                    }
+                } else if (editMode === 'resize' && resizeHandle) {
+                    // Resize the box based on which handle is being dragged
+                    let newX = editStart.box.x
+                    let newY = editStart.box.y
+                    let newW = editStart.box.width
+                    let newH = editStart.box.height
+
+                    if (resizeHandle.includes('w')) {
+                        newX = Math.min(editStart.box.x + editStart.box.width - 5, editStart.box.x + deltaX)
+                        newW = editStart.box.width - deltaX
+                    }
+                    if (resizeHandle.includes('e')) {
+                        newW = Math.max(5, editStart.box.width + deltaX)
+                    }
+                    if (resizeHandle.includes('n')) {
+                        newY = Math.min(editStart.box.y + editStart.box.height - 5, editStart.box.y + deltaY)
+                        newH = editStart.box.height - deltaY
+                    }
+                    if (resizeHandle.includes('s')) {
+                        newH = Math.max(5, editStart.box.height + deltaY)
+                    }
+
+                    return {
+                        ...s,
+                        box: {
+                            x: Math.max(0, newX),
+                            y: Math.max(0, newY),
+                            width: Math.max(5, Math.min(100 - newX, newW)),
+                            height: Math.max(5, Math.min(100 - newY, newH))
+                        }
+                    }
+                }
+                return s
+            }))
+            return
+        }
+
+        // Handle drawing new box
+        if (isDrawing) {
+            setDrawEnd(pos)
+        }
     }
 
     const handleMouseUp = () => {
+        // End editing
+        if (editMode !== 'none') {
+            setEditMode('none')
+            setEditingSourceId(null)
+            setEditStart(null)
+            setResizeHandle(null)
+            return
+        }
+
+        // End drawing
         if (!isDrawing || !drawStart || !drawEnd) {
             setIsDrawing(false)
             return
@@ -540,11 +640,11 @@ export default function SourceManager() {
                                             e.stopPropagation()
                                             setSelectedSourceId(source.id)
                                         }}
-                                        className={`absolute border-2 cursor-pointer transition-all ${selectedSourceId === source.id
-                                            ? 'border-green-500 bg-green-500/20 shadow-lg z-10'
-                                            : source.sefariaUrl
-                                                ? 'border-purple-500 bg-purple-500/10 hover:bg-purple-500/20'
-                                                : 'border-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
+                                        className={`absolute border-2 transition-all group ${selectedSourceId === source.id
+                                                ? 'border-green-500 bg-green-500/20 shadow-lg z-20'
+                                                : source.sefariaUrl
+                                                    ? 'border-purple-500 bg-purple-500/10 hover:bg-purple-500/20'
+                                                    : 'border-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
                                             }`}
                                         style={{
                                             left: `${source.box.x}%`,
@@ -554,27 +654,60 @@ export default function SourceManager() {
                                         }}
                                     >
                                         {/* Source Number Badge */}
-                                        <span className="absolute -top-2.5 -left-2.5 w-5 h-5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow">
+                                        <span className="absolute -top-2.5 -left-2.5 w-5 h-5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow z-10">
                                             {idx + 1}
                                         </span>
 
                                         {/* Sefaria Badge */}
                                         {source.sefariaUrl && (
-                                            <span className="absolute -top-2.5 -right-2.5 w-5 h-5 bg-purple-600 text-white text-xs rounded-full flex items-center justify-center shadow">
+                                            <span className="absolute -top-2.5 left-4 w-5 h-5 bg-purple-600 text-white text-xs rounded-full flex items-center justify-center shadow z-10">
                                                 ✓
                                             </span>
                                         )}
 
-                                        {/* Delete Button */}
+                                        {/* DELETE BUTTON - Always visible */}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation()
                                                 deleteSource(source.id)
                                             }}
-                                            className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center"
+                                            className="absolute -top-2.5 -right-2.5 w-6 h-6 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-full shadow-lg flex items-center justify-center z-20 transition-colors"
+                                            title="Delete source"
                                         >
                                             ×
                                         </button>
+
+                                        {/* DRAG AREA - Center of box */}
+                                        <div
+                                            onMouseDown={(e) => startDrag(e, source)}
+                                            className="absolute inset-4 cursor-move flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <span className="bg-white/80 px-2 py-1 rounded text-xs text-slate-600 shadow pointer-events-none">
+                                                Drag to move
+                                            </span>
+                                        </div>
+
+                                        {/* RESIZE HANDLES - Corners */}
+                                        {/* NW */}
+                                        <div
+                                            onMouseDown={(e) => startResize(e, source, 'nw')}
+                                            className="absolute -top-1 -left-1 w-3 h-3 bg-blue-600 hover:bg-blue-700 cursor-nw-resize rounded-sm shadow"
+                                        />
+                                        {/* NE */}
+                                        <div
+                                            onMouseDown={(e) => startResize(e, source, 'ne')}
+                                            className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 hover:bg-blue-700 cursor-ne-resize rounded-sm shadow"
+                                        />
+                                        {/* SW */}
+                                        <div
+                                            onMouseDown={(e) => startResize(e, source, 'sw')}
+                                            className="absolute -bottom-1 -left-1 w-3 h-3 bg-blue-600 hover:bg-blue-700 cursor-sw-resize rounded-sm shadow"
+                                        />
+                                        {/* SE */}
+                                        <div
+                                            onMouseDown={(e) => startResize(e, source, 'se')}
+                                            className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 hover:bg-blue-700 cursor-se-resize rounded-sm shadow"
+                                        />
                                     </div>
                                 ))}
 
