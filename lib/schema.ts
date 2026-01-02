@@ -23,7 +23,8 @@ export const shiurim = sqliteTable('shiurim', {
     description: text('description'),
     blurb: text('blurb'),
     audioUrl: text('audio_url').notNull(),
-    sourceDoc: text('source_doc'),
+    sourceDoc: text('source_doc'), // URL to PDF (Google Drive, etc.)
+    sourcesJson: text('sources_json'), // JSON array of clipped sources from SourceManager
     pubDate: integer('pub_date', { mode: 'timestamp' }).notNull(),
     duration: text('duration'),
     link: text('link'),

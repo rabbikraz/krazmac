@@ -149,8 +149,12 @@ export default async function ShiurPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Source Sheet - Main Focus */}
-        {shiur.sourceDoc && (
-          <SourceSheetViewer sourceDoc={shiur.sourceDoc} title={shiur.title} />
+        {(shiur.sourceDoc || shiur.sourcesJson) && (
+          <SourceSheetViewer
+            sourceDoc={shiur.sourceDoc}
+            sourcesJson={shiur.sourcesJson}
+            title={shiur.title}
+          />
         )}
 
         {/* Thumbnail at bottom - auto-pull from YouTube or use manual */}

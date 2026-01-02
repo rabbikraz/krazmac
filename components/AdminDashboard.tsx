@@ -14,6 +14,7 @@ interface Shiur {
   blurb?: string | null
   audioUrl: string
   sourceDoc?: string | null
+  sourcesJson?: string | null
   pubDate: string
   duration?: string | null
   link?: string | null
@@ -105,22 +106,26 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleDeleteSourceSheet = async (shiurId: string) => {
+  const handleDeleteSourceSheet = async (shiurId: string, type: 'clipped' | 'pdf' = 'clipped') => {
     try {
+      const body = type === 'clipped'
+        ? { sourcesJson: null }
+        : { sourceDoc: null }
+
       const response = await fetch(`/api/shiurim/${shiurId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceDoc: null })
+        body: JSON.stringify(body)
       })
 
       if (response.ok) {
-        alert('Source sheet deleted successfully')
+        alert(type === 'clipped' ? 'Clipped sources deleted' : 'PDF link removed')
         fetchShiurim()
       } else {
-        alert('Error deleting source sheet')
+        alert('Error deleting')
       }
     } catch (error) {
-      alert('Error deleting source sheet')
+      alert('Error deleting')
     }
   }
 
@@ -237,57 +242,39 @@ export default function AdminDashboard() {
                     </td>
                     {/* Source Sheet Status */}
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      {shiur.sourceDoc?.startsWith('sources:') ? (
-                        <div className="flex flex-col items-center gap-1.5">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            ✓ Clipped
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/test-sources?shiurId=${shiur.id}`}
-                              className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                            >
-                              Edit
-                            </Link>
-                            <span className="text-gray-300">|</span>
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {/* Clipped Sources */}
+                        {shiur.sourcesJson && (
+                          <div className="flex items-center gap-1">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              📜 Clipped
+                            </span>
                             <button
                               onClick={() => {
-                                if (confirm('Delete this source sheet? The shiur will keep its URL if it had one.')) {
-                                  handleDeleteSourceSheet(shiur.id)
+                                if (confirm('Delete the clipped sources?')) {
+                                  handleDeleteSourceSheet(shiur.id, 'clipped')
                                 }
                               }}
-                              className="text-xs text-red-500 hover:text-red-700 hover:underline"
-                              title="Delete source sheet"
+                              className="text-red-400 hover:text-red-600 p-0.5"
+                              title="Delete clipped sources"
                             >
-                              Delete
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
-                        </div>
-                      ) : shiur.sourceDoc ? (
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            📄 URL
+                        )}
+                        {/* PDF URL */}
+                        {shiur.sourceDoc && !shiur.sourceDoc.startsWith('sources:') && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            📄 PDF
                           </span>
-                          <Link
-                            href={`/test-sources?shiurId=${shiur.id}`}
-                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                          >
-                            Convert to Clipped
-                          </Link>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                        )}
+                        {/* None */}
+                        {!shiur.sourcesJson && !shiur.sourceDoc && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
                             None
                           </span>
-                          <Link
-                            href={`/test-sources?shiurId=${shiur.id}`}
-                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                          >
-                            + Add
-                          </Link>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center justify-end gap-2">

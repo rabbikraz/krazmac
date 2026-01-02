@@ -223,70 +223,14 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Original PDF Source URL
+              Source Doc
             </label>
-            <div className="flex flex-col gap-2">
-              <input
-                type="url"
-                value={(() => {
-                  // Extract URL if it's JSON
-                  if (formData.sourceDoc?.startsWith('sources:')) {
-                    try {
-                      const parsed = JSON.parse(formData.sourceDoc.slice(8))
-                      return Array.isArray(parsed) ? '' : (parsed.originalUrl || '')
-                    } catch { return '' }
-                  }
-                  return formData.sourceDoc || ''
-                })()}
-                onChange={(e) => {
-                  const newUrl = e.target.value
-                  // If we have existing clipped sources, we must preserve them and only update originalUrl
-                  if (formData.sourceDoc?.startsWith('sources:')) {
-                    try {
-                      const parsed = JSON.parse(formData.sourceDoc.slice(8))
-                      let payload = Array.isArray(parsed) ? { sources: parsed, originalUrl: newUrl } : { ...parsed, originalUrl: newUrl }
-                      setFormData({ ...formData, sourceDoc: 'sources:' + JSON.stringify(payload) })
-                    } catch {
-                      // If parse fails, just set as raw URL (might lose sources, but safer than invalid JSON)
-                      setFormData({ ...formData, sourceDoc: newUrl })
-                    }
-                  } else {
-                    // Regular URL update
-                    setFormData({ ...formData, sourceDoc: newUrl })
-                  }
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="https://..."
-              />
-
-              {/* Visual Indicator for Clipped Sources */}
-              {formData.sourceDoc?.startsWith('sources:') && (
-                <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-blue-200 text-blue-800 p-1 rounded">✂️</span>
-                    <span className="font-medium">Clipped Sources Attached</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm('Remove all clipped sources? This cannot be undone.')) {
-                        // Extract URL and set as raw sourceDoc
-                        try {
-                          const parsed = JSON.parse(formData.sourceDoc.slice(8))
-                          const url = Array.isArray(parsed) ? '' : (parsed.originalUrl || '')
-                          setFormData({ ...formData, sourceDoc: url })
-                        } catch {
-                          setFormData({ ...formData, sourceDoc: '' })
-                        }
-                      }
-                    }}
-                    className="text-xs text-red-500 hover:text-red-700 underline"
-                  >
-                    Remove Clipped Data
-                  </button>
-                </div>
-              )}
-            </div>
+            <input
+              type="url"
+              value={formData.sourceDoc}
+              onChange={(e) => setFormData({ ...formData, sourceDoc: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            />
           </div>
 
           <div>

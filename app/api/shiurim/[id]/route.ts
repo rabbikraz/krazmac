@@ -91,7 +91,8 @@ export async function PUT(
       description?: string
       blurb?: string
       audioUrl?: string
-      sourceDoc?: string
+      sourceDoc?: string | null
+      sourcesJson?: string | null
       pubDate?: string
       duration?: string
       link?: string
@@ -110,6 +111,7 @@ export async function PUT(
     if (data.blurb !== undefined) updateData.blurb = data.blurb
     if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl
     if (data.sourceDoc !== undefined) updateData.sourceDoc = data.sourceDoc
+    if (data.sourcesJson !== undefined) updateData.sourcesJson = data.sourcesJson
     if (data.pubDate !== undefined) updateData.pubDate = new Date(data.pubDate)
     if (data.duration !== undefined) updateData.duration = data.duration
     if (data.link !== undefined) updateData.link = data.link

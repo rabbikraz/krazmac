@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
 
 // ============================================================================
 // TYPES
@@ -30,7 +29,6 @@ interface Shiur {
     id: string
     title: string
     slug: string
-    sourceDoc?: string | null
 }
 
 type AppState = 'upload' | 'processing' | 'editing' | 'preview'
@@ -108,7 +106,7 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         ctx.rotate(angle)
         ctx.drawImage(page.imageElement, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh)
         ctx.restore()
-        return canvas.toDataURL('image/jpeg', 0.7)
+        return canvas.toDataURL('image/png')
     } else if (source.polygon && source.polygon.length >= 3) {
         const points = source.polygon.map(p => ({ x: (p.x / 100) * page.width, y: (p.y / 100) * page.height }))
         const minX = Math.min(...points.map(p => p.x))
@@ -117,10 +115,6 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         const maxY = Math.max(...points.map(p => p.y))
         canvas.width = maxX - minX
         canvas.height = maxY - minY
-        // Fill white background for JPEG
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
-
         ctx.beginPath()
         ctx.moveTo(points[0].x - minX, points[0].y - minY)
         for (let i = 1; i < points.length; i++) {
@@ -135,7 +129,7 @@ function clipSourceImage(source: Source, page: PageData): string | null {
         ctx.translate(-canvas.width / 2, -canvas.height / 2)
         ctx.drawImage(page.imageElement, minX, minY, maxX - minX, maxY - minY, 0, 0, maxX - minX, maxY - minY)
         ctx.restore()
-        return canvas.toDataURL('image/jpeg', 0.7)
+        return canvas.toDataURL('image/png')
     }
     return null
 }
@@ -176,9 +170,7 @@ export default function SourceManager() {
     const canvasRef = useRef<HTMLDivElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
 
-    const searchParams = useSearchParams()
-
-    // Load shiurim list and auto-select if query param exists
+    // Load shiurim list
     useEffect(() => {
         const loadShiurim = async () => {
             setLoadingShiurim(true)
@@ -187,48 +179,7 @@ export default function SourceManager() {
                 const data = await res.json()
                 // API returns array directly, not { shiurim: [...] }
                 if (Array.isArray(data)) {
-                    const loadedShiurim = data.map((s: any) => ({
-                        id: s.id,
-                        title: s.title,
-                        slug: s.slug,
-                        sourceDoc: s.sourceDoc
-                    }))
-                    setShiurim(loadedShiurim)
-
-                    // Auto-select and load if param exists
-                    const paramShiurId = searchParams.get('shiurId')
-                    if (paramShiurId) {
-                        setSelectedShiurId(paramShiurId)
-                        const targetShiur = loadedShiurim.find(s => s.id === paramShiurId)
-                        if (targetShiur?.sourceDoc?.startsWith('sources:')) {
-                            try {
-                                const json = targetShiur.sourceDoc.slice(8)
-                                const parsed = JSON.parse(json)
-                                let sourcesToLoad = []
-                                if (Array.isArray(parsed)) {
-                                    sourcesToLoad = parsed
-                                } else {
-                                    sourcesToLoad = parsed.sources
-                                }
-
-                                setSources(sourcesToLoad.map((src: any) => ({
-                                    id: src.id || `restored-${Date.now()}`,
-                                    pageIndex: 0, // Dummy
-                                    box: null,
-                                    polygon: null,
-                                    rotation: src.rotation || 0,
-                                    clippedImage: src.image,
-                                    name: src.name,
-                                    reference: src.reference,
-                                    displaySize: src.displaySize || 75
-                                })))
-                                setStatusMessage(`Loaded sources from "${targetShiur.title}"`)
-                                setAppState('preview') // Go straight to preview/editing
-                            } catch (e) {
-                                console.error('Failed to parse sources', e)
-                            }
-                        }
-                    }
+                    setShiurim(data.map((s: any) => ({ id: s.id, title: s.title, slug: s.slug })))
                 } else {
                     console.error('Unexpected shiurim response:', data)
                 }
@@ -238,7 +189,7 @@ export default function SourceManager() {
             setLoadingShiurim(false)
         }
         loadShiurim()
-    }, [searchParams])
+    }, [])
 
     // Auto-generate clipped images
     useEffect(() => {
@@ -338,8 +289,8 @@ export default function SourceManager() {
         setSources(prev => prev.map(s => s.id === id ? { ...s, rotation, clippedImage: null } : s))
     }
 
-    const updateSourceSize = (id: string, size: number) => {
-        setSources(prev => prev.map(s => s.id === id ? { ...s, displaySize: size } : s))
+    const updateSourceDisplaySize = (id: string, displaySize: number) => {
+        setSources(prev => prev.map(s => s.id === id ? { ...s, displaySize } : s))
     }
 
     const clearPage = () => {
@@ -552,25 +503,53 @@ export default function SourceManager() {
         setStatusMessage('Generating source sheet...')
 
         try {
-            // Find existing original URL if any
-            const shiur = shiurim.find(s => s.id === selectedShiurId)
-            let originalUrl = null
+            // Combine all source images into one PDF-like image
+            const canvas = document.createElement('canvas')
+            const ctx = canvas.getContext('2d')!
 
-            if (shiur?.sourceDoc) {
-                if (shiur.sourceDoc.startsWith('sources:')) {
-                    try {
-                        const parsed = JSON.parse(shiur.sourceDoc.slice(8))
-                        if (!Array.isArray(parsed)) {
-                            originalUrl = parsed.originalUrl
-                        }
-                    } catch { }
-                } else {
-                    // It's a raw URL (legacy or initial upload)
-                    originalUrl = shiur.sourceDoc
+            // Calculate total height needed
+            const imgWidth = 800
+            let totalHeight = 0
+            const loadedImages: HTMLImageElement[] = []
+
+            for (const source of sources) {
+                if (source.clippedImage) {
+                    const img = new Image()
+                    img.src = source.clippedImage
+                    await new Promise(resolve => { img.onload = resolve })
+                    const aspectRatio = img.height / img.width
+                    totalHeight += imgWidth * aspectRatio + 40 // 40px padding between
+                    loadedImages.push(img)
                 }
             }
 
-            // Generate source data
+            canvas.width = imgWidth
+            canvas.height = totalHeight + 60
+
+            // White background
+            ctx.fillStyle = 'white'
+            ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+            // Draw each source
+            let yOffset = 30
+            sources.forEach((source, idx) => {
+                if (source.clippedImage && loadedImages[idx]) {
+                    const img = loadedImages[idx]
+                    const aspectRatio = img.height / img.width
+                    const h = imgWidth * aspectRatio
+
+                    // Draw source name
+                    ctx.fillStyle = '#1e293b'
+                    ctx.font = 'bold 16px system-ui'
+                    ctx.fillText(`${idx + 1}. ${source.name}`, 10, yOffset - 5)
+
+                    // Draw image
+                    ctx.drawImage(img, 0, yOffset, imgWidth, h)
+                    yOffset += h + 40
+                }
+            })
+
+            // Store as JSON with individual source images for HTML rendering
             const sourceData = sources.map((source) => ({
                 id: source.id,
                 name: source.name,
@@ -580,22 +559,17 @@ export default function SourceManager() {
                 displaySize: source.displaySize || 75
             }))
 
-            // Save as JSON object with sources AND originalUrl
-            const payload = {
-                sources: sourceData,
-                originalUrl: originalUrl
-            }
+            // Save as JSON string to sourcesJson field (separate from PDF link in sourceDoc)
+            const sourcesJsonStr = JSON.stringify(sourceData)
 
-            // Prefix "sources:" to identify this is our new format
-            const sourceDocJson = 'sources:' + JSON.stringify(payload)
-
+            // Upload to the shiur
             setStatusMessage('Uploading to shiur...')
 
             const res = await fetch(`/api/shiurim/${selectedShiurId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    sourceDoc: sourceDocJson
+                    sourcesJson: sourcesJsonStr
                 })
             })
 
@@ -604,6 +578,7 @@ export default function SourceManager() {
                 throw new Error(errData.error || 'Failed to update shiur')
             }
 
+            const shiur = shiurim.find(s => s.id === selectedShiurId)
             setStatusMessage(`✓ Applied to "${shiur?.title}"`)
             alert(`Source sheet successfully applied to "${shiur?.title}"!\n\nThe sources have been saved and will display on the shiur page.`)
 
@@ -621,139 +596,94 @@ export default function SourceManager() {
     // ============================================================================
 
     return (
-        <div className="h-screen flex flex-col bg-slate-50 text-slate-800 font-sans">
-            {/* MINIMAL HEADER */}
-            <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-30">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-sm font-bold uppercase tracking-widest text-slate-400">Clipper</h1>
-                    {/* View Switcher */}
-                    {pages.length > 0 && (
-                        <div className="flex bg-slate-100 rounded-lg p-1">
-                            <button
-                                onClick={() => setAppState('editing')}
-                                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${appState === 'editing' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                Edit (Canvas)
-                            </button>
-                            <button
-                                onClick={() => setAppState('preview')}
-                                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${appState === 'preview' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                Organize & Save
-                            </button>
-                        </div>
-                    )}
-                </div>
+        <div className="h-screen flex flex-col bg-slate-100">
+            {/* HEADER */}
+            <header className="bg-white border-b px-4 py-2 flex items-center justify-between shadow-sm">
+                <h1 className="text-lg font-bold text-slate-800">📜 Source Clipper</h1>
 
                 {pages.length > 0 && (
-                    <div className="flex items-center gap-3">
-                        {statusMessage && <span className="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full animate-pulse">{statusMessage}</span>}
-
-                        {/* Page Navigation */}
-                        <div className="flex items-center gap-2 bg-white border rounded-lg px-2 py-1 text-sm shadow-sm">
-                            <button onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))} disabled={currentPageIndex === 0} className="px-2 text-slate-400 hover:text-slate-700 disabled:opacity-30">←</button>
-                            <span className="min-w-[3rem] text-center font-mono text-slate-600">{currentPageIndex + 1} / {pages.length}</span>
-                            <button onClick={() => setCurrentPageIndex(Math.min(pages.length - 1, currentPageIndex + 1))} disabled={currentPageIndex === pages.length - 1} className="px-2 text-slate-400 hover:text-slate-700 disabled:opacity-30">→</button>
+                    <div className="flex items-center gap-2 text-sm">
+                        {/* Draw mode */}
+                        <div className="flex bg-slate-100 rounded p-0.5">
+                            <button onClick={() => { setDrawMode('rectangle'); setPolygonPoints([]) }} className={`px-2 py-1 rounded ${drawMode === 'rectangle' ? 'bg-white shadow' : ''}`}>▭ Rect</button>
+                            <button onClick={() => setDrawMode('polygon')} className={`px-2 py-1 rounded ${drawMode === 'polygon' ? 'bg-white shadow' : ''}`}>⬡ Poly</button>
                         </div>
+
+                        {polygonPoints.length > 0 && (
+                            <>
+                                <span className="text-slate-500">{polygonPoints.length} pts</span>
+                                <button onClick={finishPolygon} disabled={polygonPoints.length < 3} className="px-2 py-1 bg-green-500 text-white rounded disabled:opacity-50">✓</button>
+                                <button onClick={() => setPolygonPoints([])} className="px-2 py-1 bg-red-500 text-white rounded">✗</button>
+                            </>
+                        )}
+
+                        {/* Page nav */}
+                        <div className="flex items-center gap-1 bg-slate-100 rounded px-2 py-1">
+                            <button onClick={() => setCurrentPageIndex(Math.max(0, currentPageIndex - 1))} disabled={currentPageIndex === 0} className="disabled:opacity-30">←</button>
+                            <span>{currentPageIndex + 1}/{pages.length}</span>
+                            <button onClick={() => setCurrentPageIndex(Math.min(pages.length - 1, currentPageIndex + 1))} disabled={currentPageIndex === pages.length - 1} className="disabled:opacity-30">→</button>
+                        </div>
+
+                        {/* Quick Grid */}
+                        <div className="relative group">
+                            <button className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded">Grid</button>
+                            <div className="absolute right-0 top-full mt-1 bg-white border rounded shadow-lg p-1 hidden group-hover:block z-20 min-w-[80px]">
+                                {[2, 3, 4, 5, 6].map(n => (
+                                    <button key={n} onClick={() => applyQuickGrid(n)} className="block w-full text-left px-3 py-1 hover:bg-blue-50 rounded whitespace-nowrap">{n} rows</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={clearPage} className="px-2 py-1 text-red-600 hover:bg-red-50 rounded">Clear</button>
+
+                        {/* View toggle */}
+                        <div className="flex bg-slate-100 rounded p-0.5">
+                            <button onClick={() => setAppState('editing')} className={`px-2 py-1 rounded ${appState === 'editing' ? 'bg-white shadow' : ''}`}>Edit</button>
+                            <button onClick={() => setAppState('preview')} className={`px-2 py-1 rounded ${appState === 'preview' ? 'bg-white shadow' : ''}`}>Preview</button>
+                        </div>
+
+                        {statusMessage && <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded">{statusMessage}</span>}
                     </div>
                 )}
             </header>
 
-            {/* MAIN CONTENT AREA */}
-            <div className="flex-1 flex overflow-hidden relative">
-
-                {/* UPLOAD SCREEN */}
+            {/* MAIN */}
+            <div className="flex-1 flex overflow-hidden">
+                {/* UPLOAD */}
                 {appState === 'upload' && (
-                    <div className="flex-1 flex items-center justify-center p-8">
+                    <div className="flex-1 flex items-center justify-center">
                         <div
                             onClick={() => document.getElementById('file-input')?.click()}
                             onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f) }}
-                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500', 'bg-blue-50/50') }}
-                            onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500', 'bg-blue-50/50') }}
-                            className="bg-white max-w-xl w-full border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center cursor-pointer transition-all hover:border-blue-400 hover:shadow-lg hover:-translate-y-1 group"
+                            onDragOver={(e) => e.preventDefault()}
+                            className="border-2 border-dashed border-blue-300 rounded-2xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/50"
                         >
-                            <div className="w-20 h-20 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                            </div>
-                            <h2 className="text-2xl font-bold text-slate-800 mb-2">Upload Source Material</h2>
-                            <p className="text-slate-500 mb-8">Drop your PDF or image here to start clipping</p>
-
-                            <button className="bg-slate-900 text-white px-8 py-3 rounded-xl font-medium shadow-lg shadow-slate-200 hover:bg-slate-800 transition-all transform active:scale-95">
-                                Select File
-                            </button>
-
-                            {error && (
-                                <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 text-sm font-medium">
-                                    {error}
-                                </div>
-                            )}
+                            <div className="text-5xl mb-4">📄</div>
+                            <h2 className="text-xl font-semibold mb-2">Upload Source Sheet</h2>
+                            <p className="text-slate-500">PDF or Image</p>
+                            {error && <p className="text-red-600 mt-2">{error}</p>}
                             <input id="file-input" type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }} />
                         </div>
                     </div>
                 )}
 
-                {/* PROCESSING SPINNER */}
+                {/* PROCESSING */}
                 {appState === 'processing' && (
-                    <div className="flex-1 flex items-center justify-center bg-white">
+                    <div className="flex-1 flex items-center justify-center">
                         <div className="text-center">
-                            <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-                            <p className="text-slate-500 font-medium animate-pulse">{statusMessage}</p>
+                            <div className="text-5xl mb-4 animate-bounce">🔍</div>
+                            <p className="text-lg">{statusMessage}</p>
                         </div>
                     </div>
                 )}
 
-                {/* EDITING CANVAS */}
+                {/* EDITING */}
                 {appState === 'editing' && pages.length > 0 && (
                     <>
-                        <div className="flex-1 overflow-auto bg-slate-100 flex justify-center p-8 relative">
-                            {/* FLOATING TOOLBAR */}
-                            <div className="absolute top-6 left-6 flex flex-col gap-2 bg-white/90 backdrop-blur shadow-xl border border-slate-200 p-2 rounded-2xl z-40">
-                                <button
-                                    onClick={() => { setDrawMode('rectangle'); setPolygonPoints([]) }}
-                                    className={`p-3 rounded-xl transition-all ${drawMode === 'rectangle' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
-                                    title="Rectangle Tool"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth={2} /></svg>
-                                </button>
-                                <button
-                                    onClick={() => setDrawMode('polygon')}
-                                    className={`p-3 rounded-xl transition-all ${drawMode === 'polygon' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
-                                    title="Polygon Tool"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6.16 19.34L3.6 13.9a2 2 0 010-3.32l2.56-5.44a2 2 0 012.38-1.5l5.96 1.48a2 2 0 011.46 1.46l1.48 5.96a2 2 0 01-1.5 2.38l-5.44 2.56a2 2 0 01-3.32 0z" /></svg>
-                                </button>
-
-                                <div className="h-px bg-slate-200 my-1 mx-2" />
-
-                                <div className="relative group">
-                                    <button className="p-3 rounded-xl text-slate-500 hover:bg-slate-100 transition-all" title="Quick Grid">
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-                                    </button>
-                                    <div className="absolute left-full top-0 ml-2 bg-white border border-slate-100 rounded-xl shadow-xl overflow-hidden hidden group-hover:block w-32">
-                                        {[2, 3, 4, 5, 6].map(n => (
-                                            <button key={n} onClick={() => applyQuickGrid(n)} className="block w-full text-left px-4 py-2 hover:bg-blue-50 text-sm text-slate-600">{n} Rows</button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <button onClick={clearPage} className="p-3 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all" title="Clear Page">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
-                            </div>
-
-                            {/* POLYGON CONTROLS (Only when active) */}
-                            {drawMode === 'polygon' && polygonPoints.length > 0 && (
-                                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-full shadow-xl z-40 transform hover:scale-105 transition-all">
-                                    <span className="text-sm font-medium border-r border-slate-700 pr-3 mr-1">{polygonPoints.length} pts</span>
-                                    <button onClick={finishPolygon} disabled={polygonPoints.length < 3} className="hover:text-green-400 disabled:opacity-50 font-bold px-2">Complete ✓</button>
-                                    <button onClick={() => setPolygonPoints([])} className="hover:text-red-400 font-bold px-2">Cancel ✕</button>
-                                </div>
-                            )}
-
-                            {/* CANVAS ITSELF */}
+                        <div className="flex-1 overflow-auto p-4 flex justify-center">
                             <div
                                 ref={canvasRef}
-                                className="relative inline-block cursor-crosshair select-none shadow-2xl rounded-lg overflow-hidden ring-1 ring-black/5"
+                                className="relative inline-block cursor-crosshair select-none"
                                 style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
                                 onClick={handleCanvasClick}
                                 onMouseDown={handleMouseDown}
@@ -761,7 +691,7 @@ export default function SourceManager() {
                                 onMouseUp={handleMouseUp}
                                 onMouseLeave={handleMouseUp}
                             >
-                                <img ref={imageRef} src={pages[currentPageIndex].imageDataUrl} alt="Page" className="max-h-[calc(100vh-140px)] pointer-events-none select-none" draggable={false} />
+                                <img ref={imageRef} src={pages[currentPageIndex].imageDataUrl} alt="Page" className="max-h-[calc(100vh-100px)] shadow-xl rounded-lg pointer-events-none select-none" draggable={false} />
 
                                 {/* Render sources */}
                                 {currentPageSources.map((source, idx) => {
@@ -771,7 +701,7 @@ export default function SourceManager() {
                                             <div
                                                 key={source.id}
                                                 onClick={(e) => { e.stopPropagation(); setSelectedSourceId(source.id) }}
-                                                className={`absolute border-2 transition-colors ${isSelected ? 'border-blue-500 bg-blue-500/10 z-20' : 'border-blue-400/50 hover:border-blue-400 hover:bg-blue-400/5'}`}
+                                                className={`absolute border-2 ${isSelected ? 'border-green-500 bg-green-500/20 z-20' : 'border-blue-500 bg-blue-500/10'}`}
                                                 style={{
                                                     left: `${source.box.x}%`, top: `${source.box.y}%`,
                                                     width: `${source.box.width}%`, height: `${source.box.height}%`,
@@ -779,55 +709,42 @@ export default function SourceManager() {
                                                     transformOrigin: 'center'
                                                 }}
                                             >
-                                                {/* Number Badge */}
-                                                <div className="absolute -top-3 -left-3 w-6 h-6 bg-slate-900 text-white text-xs font-bold rounded-lg flex items-center justify-center shadow-md transform scale-90 group-hover:scale-100 transition-transform">
-                                                    {idx + 1}
-                                                </div>
+                                                {/* Number */}
+                                                <span className="absolute -top-3 -left-3 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow">{idx + 1}</span>
 
-                                                {/* Delete Button (On Hover/Selected) */}
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }}
-                                                    className={`absolute -top-3 -right-3 w-6 h-6 bg-white border border-slate-200 text-red-500 rounded-full shadow-md flex items-center justify-center hover:bg-red-50 transition-all ${isSelected ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}
+                                                {/* Delete */}
+                                                <button onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }} className="absolute -top-3 -right-3 w-6 h-6 bg-red-500 text-white rounded-full shadow">×</button>
+
+                                                {/* ROTATION HANDLE - Circular, positioned outside the box */}
+                                                <div
+                                                    onMouseDown={(e) => startRotate(e, source)}
+                                                    className="absolute -top-8 left-1/2 -translate-x-1/2 w-6 h-6 bg-orange-500 hover:bg-orange-600 rounded-full cursor-grab flex items-center justify-center text-white text-xs shadow-lg"
+                                                    title={`Rotate (${source.rotation}°)`}
                                                 >
-                                                    ×
-                                                </button>
+                                                    ↻
+                                                </div>
+                                                {/* Rotation indicator line */}
+                                                <div className="absolute -top-5 left-1/2 w-px h-3 bg-orange-500" />
 
-                                                {/* Controls for Selected Source */}
-                                                {isSelected && (
-                                                    <>
-                                                        {/* Rotation Handle */}
-                                                        <div
-                                                            onMouseDown={(e) => startRotate(e, source)}
-                                                            className="absolute -top-10 left-1/2 -translate-x-1/2 w-8 h-8 bg-white border border-slate-200 rounded-full cursor-grab flex items-center justify-center text-slate-600 shadow-lg hover:bg-slate-50 hover:border-blue-300"
-                                                            title="Rotate"
-                                                        >
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                                        </div>
-                                                        {/* Connector line */}
-                                                        <div className="absolute -top-2 left-1/2 w-px h-8 bg-blue-500/50 border-l border-dashed border-blue-300 pointer-events-none" />
+                                                {/* Drag area */}
+                                                <div onMouseDown={(e) => startDrag(e, source)} className="absolute inset-2 cursor-move" />
 
-                                                        {/* Resize handles */}
-                                                        <div onMouseDown={(e) => startResize(e, source, 'nw')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nw-resize shadow-sm" />
-                                                        <div onMouseDown={(e) => startResize(e, source, 'ne')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ne-resize shadow-sm" />
-                                                        <div onMouseDown={(e) => startResize(e, source, 'sw')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-sw-resize shadow-sm" />
-                                                        <div onMouseDown={(e) => startResize(e, source, 'se')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-se-resize shadow-sm" />
-                                                    </>
-                                                )}
-
-                                                {/* Drag Surface */}
-                                                {isSelected && <div onMouseDown={(e) => startDrag(e, source)} className="absolute inset-0 cursor-move bg-transparent" />}
+                                                {/* Resize handles */}
+                                                <div onMouseDown={(e) => startResize(e, source, 'nw')} className="absolute -top-1 -left-1 w-3 h-3 bg-blue-600 cursor-nw-resize" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'ne')} className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 cursor-ne-resize" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'sw')} className="absolute -bottom-1 -left-1 w-3 h-3 bg-blue-600 cursor-sw-resize" />
+                                                <div onMouseDown={(e) => startResize(e, source, 'se')} className="absolute -bottom-1 -right-1 w-3 h-3 bg-blue-600 cursor-se-resize" />
                                             </div>
                                         )
                                     } else if (source.polygon && source.polygon.length >= 3) {
                                         return (
                                             <svg key={source.id} className="absolute inset-0 w-full h-full pointer-events-none" style={{ transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined }}>
                                                 <polygon
-                                                    points={source.polygon.map(p => `${p.x},${p.y}`).join(' ')}
-                                                    fill={selectedSourceId === source.id ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.1)'}
-                                                    stroke={selectedSourceId === source.id ? '#2563eb' : '#60a5fa'}
-                                                    strokeWidth="0.5" // Scaled for 100x100 box
-                                                    vectorEffect="non-scaling-stroke"
-                                                    className="pointer-events-auto cursor-pointer hover:fill-blue-500/20"
+                                                    points={source.polygon.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                                                    fill={selectedSourceId === source.id ? 'rgba(34, 197, 94, 0.2)' : 'rgba(59, 130, 246, 0.15)'}
+                                                    stroke={selectedSourceId === source.id ? '#22c55e' : '#3b82f6'}
+                                                    strokeWidth="2"
+                                                    className="pointer-events-auto cursor-pointer"
                                                     onClick={() => setSelectedSourceId(source.id)}
                                                 />
                                             </svg>
@@ -836,210 +753,175 @@ export default function SourceManager() {
                                     return null
                                 })}
 
-                                {/* Draw Preview - Rect */}
+                                {/* Drawing preview - rectangle */}
                                 {isDrawing && drawStart && drawEnd && (
-                                    <div className="absolute border font-thin border-blue-500 bg-blue-500/10 pointer-events-none" style={{
+                                    <div className="absolute border-2 border-blue-600 bg-blue-500/30 pointer-events-none" style={{
                                         left: `${Math.min(drawStart.x, drawEnd.x)}%`, top: `${Math.min(drawStart.y, drawEnd.y)}%`,
                                         width: `${Math.abs(drawEnd.x - drawStart.x)}%`, height: `${Math.abs(drawEnd.y - drawStart.y)}%`
                                     }} />
                                 )}
 
-                                {/* Draw Preview - Poly */}
+                                {/* Drawing preview - polygon with LINES */}
                                 {polygonPoints.length > 0 && (
-                                    <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                                        {/* Lines connecting points */}
                                         {polygonPoints.length > 1 && (
-                                            <polyline points={polygonPoints.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+                                            <polyline
+                                                points={polygonPoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                                                fill="none"
+                                                stroke="#3b82f6"
+                                                strokeWidth="3"
+                                            />
                                         )}
+                                        {/* Points */}
                                         {polygonPoints.map((p, i) => (
-                                            <circle key={i} cx={p.x} cy={p.y} r="0.6" fill="white" stroke="#2563eb" strokeWidth="0.2" vectorEffect="non-scaling-stroke" />
+                                            <circle key={i} cx={`${p.x}%`} cy={`${p.y}%`} r="6" fill="#3b82f6" stroke="white" strokeWidth="2" />
                                         ))}
+                                        {/* Closing line preview */}
                                         {polygonPoints.length >= 3 && (
-                                            <line x1={polygonPoints[polygonPoints.length - 1].x} y1={polygonPoints[polygonPoints.length - 1].y} x2={polygonPoints[0].x} y2={polygonPoints[0].y} stroke="#2563eb" strokeWidth="0.5" strokeDasharray="1,1" vectorEffect="non-scaling-stroke" />
+                                            <line
+                                                x1={`${polygonPoints[polygonPoints.length - 1].x}%`}
+                                                y1={`${polygonPoints[polygonPoints.length - 1].y}%`}
+                                                x2={`${polygonPoints[0].x}%`}
+                                                y2={`${polygonPoints[0].y}%`}
+                                                stroke="#3b82f6"
+                                                strokeWidth="2"
+                                                strokeDasharray="5,5"
+                                            />
                                         )}
                                     </svg>
                                 )}
                             </div>
                         </div>
 
-                        {/* SIDEBAR - Current Page Sources */}
-                        <aside className="w-72 bg-white border-l border-slate-200 flex flex-col z-10 shadow-sm">
-                            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                                <h3 className="font-semibold text-slate-700 text-sm">Page {currentPageIndex + 1} Sources</h3>
-                                <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md text-xs font-bold">{currentPageSources.length}</span>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {/* Sidebar - source list */}
+                        <aside className="w-80 bg-white border-l flex flex-col">
+                            <div className="p-3 border-b bg-slate-50 font-semibold">Sources ({currentPageSources.length})</div>
+                            <div className="flex-1 overflow-auto">
                                 {currentPageSources.map((source, idx) => (
-                                    <div
-                                        key={source.id}
-                                        onClick={() => setSelectedSourceId(source.id)}
-                                        className={`group relative p-2 rounded-xl border cursor-pointer transition-all ${selectedSourceId === source.id ? 'bg-blue-50 border-blue-200 shadow-sm ring-1 ring-blue-100' : 'bg-white border-transparent hover:border-slate-200 hover:bg-slate-50'}`}
-                                    >
-                                        <div className="flex items-start gap-3">
-                                            {source.clippedImage ? (
-                                                <div className="w-16 h-16 bg-slate-100 rounded-lg border border-slate-200 overflow-hidden flex-shrink-0">
-                                                    <img src={source.clippedImage} className="w-full h-full object-contain" />
-                                                </div>
-                                            ) : (
-                                                <div className="w-16 h-16 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-center text-slate-300">
-                                                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                                                </div>
-                                            )}
-                                            <div className="flex-1 min-w-0 pt-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="bg-slate-900 text-white w-5 h-5 text-[10px] font-bold rounded flex items-center justify-center">{idx + 1}</span>
-                                                    <span className="text-sm font-medium text-slate-700 truncate">{source.name}</span>
-                                                </div>
-                                                <p className="text-xs text-slate-400">
-                                                    {source.rotation}° • {source.displaySize || 75}%
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }}
-                                                className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity absolute top-2 right-2"
-                                            >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                            </button>
+                                    <div key={source.id} onClick={() => setSelectedSourceId(source.id)} className={`p-3 border-b cursor-pointer ${selectedSourceId === source.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{idx + 1}</span>
+                                            <span className="text-sm font-medium flex-1 truncate">{source.name}</span>
+                                            <span className="text-xs text-orange-500">{source.rotation}°</span>
+                                            <button onClick={(e) => { e.stopPropagation(); deleteSource(source.id) }} className="text-red-500 text-sm">×</button>
                                         </div>
+                                        {source.clippedImage && <img src={source.clippedImage} alt="" className="w-full rounded border" />}
                                     </div>
                                 ))}
-                                {currentPageSources.length === 0 && (
-                                    <div className="text-center py-12 px-4">
-                                        <p className="text-sm text-slate-400">No sources on this page.</p>
-                                        <p className="text-xs text-slate-300 mt-1">Use the tools to draw boxes.</p>
-                                    </div>
-                                )}
                             </div>
                         </aside>
                     </>
                 )}
 
-                {/* ORGANIZER / PREVIEW MODE */}
+                {/* PREVIEW - Clean stacked layout with editable names */}
                 {appState === 'preview' && (
-                    <div className="flex-1 overflow-auto bg-slate-50">
-                        <div className="max-w-5xl mx-auto p-8">
+                    <div className="flex-1 overflow-auto bg-white">
+                        <div className="max-w-3xl mx-auto p-8">
+                            <h1 className="text-2xl font-bold text-center mb-6 pb-4 border-b">Source Sheet</h1>
 
-                            <div className="flex flex-col md:flex-row md:items-start gap-8">
-                                {/* LIST COLUMN */}
-                                <div className="flex-1 space-y-6">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h2 className="text-xl font-bold text-slate-800">Review clips ({sources.length})</h2>
-                                        <button onClick={() => setAppState('editing')} className="text-sm text-blue-600 hover:underline">← Back to Edit</button>
-                                    </div>
-
-                                    {sources.length === 0 ? (
-                                        <div className="bg-white border text-center p-12 rounded-xl text-slate-400">No sources clipped yet.</div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            {sources.map((source, idx) => (
-                                                <div key={source.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex gap-6 items-start hover:shadow-md transition-shadow">
-                                                    {/* Number */}
-                                                    <div className="flex-shrink-0 w-8 h-8 bg-slate-100 text-slate-600 font-bold rounded-lg flex items-center justify-center border border-slate-200">
-                                                        {idx + 1}
-                                                    </div>
-
-                                                    {/* Controls */}
-                                                    <div className="flex-1 space-y-4">
-                                                        <div>
-                                                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Title</label>
-                                                            <input
-                                                                type="text"
-                                                                value={source.name}
-                                                                onChange={(e) => updateSourceName(source.id, e.target.value)}
-                                                                className="w-full text-lg font-medium text-slate-800 placeholder-slate-300 border-b border-transparent focus:border-blue-500 focus:outline-none transition-colors pb-1"
-                                                                placeholder="Enter title..."
-                                                            />
-                                                        </div>
-
-                                                        <div className="flex items-center gap-6">
-                                                            <div className="flex-1">
-                                                                <div className="flex items-center justify-between mb-1">
-                                                                    <label className="text-xs font-medium text-slate-500">Display Size</label>
-                                                                    <span className="text-xs font-mono text-slate-400">{source.displaySize || 75}%</span>
-                                                                </div>
-                                                                <input
-                                                                    type="range"
-                                                                    min="25" max="100" step="5"
-                                                                    value={source.displaySize || 75}
-                                                                    onChange={(e) => updateSourceSize(source.id, parseInt(e.target.value))}
-                                                                    className="w-full h-1.5 bg-slate-100 rounded-full appearance-none cursor-pointer accent-slate-900"
-                                                                />
-                                                            </div>
-
-                                                            <div className="w-px h-8 bg-slate-100"></div>
-
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-slate-500 mb-1">Rotation</label>
-                                                                <div className="flex items-center gap-1">
-                                                                    <button onClick={() => updateSourceRotation(source.id, (source.rotation || 0) - 90)} className="p-1 hover:bg-slate-100 rounded text-slate-400">↺</button>
-                                                                    <span className="w-8 text-center text-sm font-mono text-slate-600">{source.rotation}°</span>
-                                                                    <button onClick={() => updateSourceRotation(source.id, (source.rotation || 0) + 90)} className="p-1 hover:bg-slate-100 rounded text-slate-400">↻</button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Preview Image */}
-                                                    <div className="w-32 bg-slate-50 p-2 rounded border border-slate-100 flex items-center justify-center">
-                                                        {source.clippedImage ? (
-                                                            <img src={source.clippedImage} className="max-w-full max-h-24 shadow-sm" style={{ transform: `rotate(${source.rotation}deg)` }} />
-                                                        ) : (
-                                                            <span className="text-xs text-slate-400">No Img</span>
-                                                        )}
-                                                    </div>
-
-                                                    {/* Delete */}
-                                                    <button onClick={() => deleteSource(source.id)} className="text-slate-300 hover:text-red-500 p-1">
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                                    </button>
+                            {sources.length === 0 ? (
+                                <p className="text-center text-slate-400">No sources</p>
+                            ) : (
+                                <div className="space-y-6">
+                                    {sources.map((source, idx) => (
+                                        <div key={source.id} className="border rounded-lg overflow-hidden shadow-sm bg-white">
+                                            {/* Header with controls */}
+                                            <div className="bg-slate-50 px-4 py-3 flex items-center gap-3 flex-wrap">
+                                                <span className="w-7 h-7 bg-blue-600 text-white text-sm font-bold rounded-full flex items-center justify-center flex-shrink-0">{idx + 1}</span>
+                                                <input
+                                                    type="text"
+                                                    value={source.name}
+                                                    onChange={(e) => updateSourceName(source.id, e.target.value)}
+                                                    className="flex-1 min-w-[150px] bg-white px-2 py-1 rounded border focus:border-blue-500 focus:outline-none text-sm"
+                                                    placeholder="Source name..."
+                                                />
+                                                {/* Rotation */}
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-xs text-slate-500">Rotate:</span>
+                                                    <input
+                                                        type="number"
+                                                        value={source.rotation}
+                                                        onChange={(e) => updateSourceRotation(source.id, parseInt(e.target.value) || 0)}
+                                                        className="w-14 text-xs px-2 py-1 border rounded text-center"
+                                                        min="-180"
+                                                        max="180"
+                                                    />
+                                                    <span className="text-xs text-slate-500">°</span>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* ACTION SIDEBAR */}
-                                <div className="w-full md:w-80 space-y-6 sticky top-6">
-                                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                                        <h3 className="font-bold text-slate-800 mb-4">Finalize</h3>
-                                        <p className="text-sm text-slate-500 mb-6">Select a shiur to attach these sources to. This will update the shiur page immediately.</p>
-
-                                        <div className="space-y-4">
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Target Shiur</label>
-                                                <select
-                                                    value={selectedShiurId || ''}
-                                                    onChange={(e) => setSelectedShiurId(e.target.value || null)}
-                                                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                                >
-                                                    <option value="">Select a shiur...</option>
-                                                    {shiurim.map(s => (
-                                                        <option key={s.id} value={s.id}>
-                                                            {s.title}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                {selectedShiurId && shiurim.find(s => s.id === selectedShiurId)?.sourceDoc?.startsWith('sources:') && (
-                                                    <p className="text-xs text-amber-600 mt-2 bg-amber-50 p-2 rounded border border-amber-100">
-                                                        Note: This shiur already has clipped sources. Applying will overwrite them.
-                                                    </p>
-                                                )}
+                                                <button onClick={() => deleteSource(source.id)} className="text-red-500 hover:bg-red-100 rounded p-1.5 text-xs">✕</button>
                                             </div>
 
-                                            <button
-                                                onClick={applyToShiur}
-                                                disabled={!selectedShiurId || saving || sources.length === 0}
-                                                className="w-full py-3 bg-slate-900 text-white rounded-xl font-semibold shadow-lg shadow-slate-200 hover:bg-slate-800 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-y-0"
-                                            >
-                                                {saving ? 'Saving...' : 'Save Source Sheet'}
-                                            </button>
+                                            {/* Size Slider */}
+                                            <div className="px-4 py-2 bg-slate-100 flex items-center gap-3">
+                                                <span className="text-xs text-slate-600 whitespace-nowrap">Display Size:</span>
+                                                <input
+                                                    type="range"
+                                                    min="25"
+                                                    max="100"
+                                                    step="5"
+                                                    value={source.displaySize}
+                                                    onChange={(e) => updateSourceDisplaySize(source.id, parseInt(e.target.value))}
+                                                    className="flex-1 h-1.5 bg-slate-300 rounded-full appearance-none cursor-pointer"
+                                                />
+                                                <span className="text-xs text-slate-600 font-medium w-10 text-right">{source.displaySize}%</span>
+                                            </div>
+
+                                            {/* Image Preview at scaled size */}
+                                            {source.clippedImage ? (
+                                                <div className="p-4 bg-slate-50 flex justify-center">
+                                                    <img
+                                                        src={source.clippedImage}
+                                                        alt={source.name}
+                                                        style={{ width: `${source.displaySize}%`, maxWidth: '100%' }}
+                                                        className="border rounded shadow-sm"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div className="h-24 bg-slate-100 flex items-center justify-center text-slate-400 text-sm">No preview</div>
+                                            )}
                                         </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* APPLY TO SHIUR */}
+                            {sources.length > 0 && (
+                                <div className="mt-8 p-4 bg-slate-50 rounded-lg border">
+                                    <h2 className="font-semibold mb-3 text-sm">Attach to Shiur</h2>
+                                    <div className="flex flex-col gap-2">
+                                        <select
+                                            value={selectedShiurId || ''}
+                                            onChange={(e) => setSelectedShiurId(e.target.value || null)}
+                                            className="w-full px-3 py-2 border rounded text-sm"
+                                            disabled={loadingShiurim || saving}
+                                        >
+                                            <option value="">-- Select a Shiur --</option>
+                                            {shiurim.map(s => (
+                                                <option key={s.id} value={s.id}>{s.title}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            onClick={applyToShiur}
+                                            disabled={!selectedShiurId || saving}
+                                            className="w-full px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                        >
+                                            {saving ? 'Saving...' : 'Apply to Shiur'}
+                                        </button>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     </div>
                 )}
             </div>
+
+            {/* Hint for polygon mode */}
+            {appState === 'editing' && drawMode === 'polygon' && polygonPoints.length === 0 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-full text-sm">
+                    Click to add points, then click ✓ to finish
+                </div>
+            )}
         </div>
     )
 }
