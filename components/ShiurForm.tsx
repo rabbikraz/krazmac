@@ -223,46 +223,69 @@ export default function ShiurForm({ shiur, onSuccess, onCancel }: ShiurFormProps
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Source Doc (PDF URL)
-            </label>
-            <input
-              type="url"
-              value={formData.sourceDoc}
-              onChange={(e) => setFormData({ ...formData, sourceDoc: e.target.value })}
-              placeholder="https://drive.google.com/..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">Original PDF link (Google Drive, etc.)</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Clipped Sources (JSON)
-            </label>
-            <div className="flex gap-2">
+        {/* SOURCE DOCUMENTS SECTION */}
+        <div className="border-t pt-6 mt-6">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            📄 Source Documents
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* PDF Source */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <label className="block text-sm font-medium text-blue-800 mb-2">
+                📎 PDF Source URL
+              </label>
               <input
-                type="text"
-                value={formData.sourcesJson ? '✓ Has clipped sources' : ''}
-                readOnly
-                placeholder="No clipped sources (use Source Manager)"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                type="url"
+                value={formData.sourceDoc}
+                onChange={(e) => setFormData({ ...formData, sourceDoc: e.target.value })}
+                placeholder="https://drive.google.com/..."
+                className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               />
-              {formData.sourcesJson && (
+              <p className="text-xs text-blue-600 mt-2">Original PDF link (Google Drive, Dropbox, etc.)</p>
+              {formData.sourceDoc && (
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, sourcesJson: '' })}
-                  className="px-3 py-2 text-red-600 border border-red-200 rounded-lg hover:bg-red-50"
+                  onClick={() => setFormData({ ...formData, sourceDoc: '' })}
+                  className="mt-2 text-xs text-red-600 hover:underline"
                 >
-                  Clear
+                  Remove PDF link
                 </button>
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Clipped sources are created in the Source Manager</p>
-          </div>
 
+            {/* Clipped Sources */}
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <label className="block text-sm font-medium text-green-800 mb-2">
+                ✂️ Clipped Sources
+              </label>
+              <div className="flex items-center gap-2">
+                {formData.sourcesJson ? (
+                  <>
+                    <span className="flex-1 px-4 py-2 bg-green-100 border border-green-300 rounded-lg text-green-700 font-medium">
+                      ✓ Has clipped sources
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, sourcesJson: '' })}
+                      className="px-3 py-2 text-red-600 border border-red-200 rounded-lg hover:bg-red-50 text-sm"
+                    >
+                      Delete
+                    </button>
+                  </>
+                ) : (
+                  <span className="flex-1 px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-gray-500">
+                    No clipped sources
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-green-600 mt-2">Created via Source Clipper tool</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Thumbnail URL (for WhatsApp/Social sharing)

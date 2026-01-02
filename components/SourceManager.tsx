@@ -155,6 +155,7 @@ export default function SourceManager() {
 
     // Polygon drawing
     const [polygonPoints, setPolygonPoints] = useState<Array<{ x: number; y: number }>>([])
+    const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
 
     // Editing (drag/resize)
     const [editMode, setEditMode] = useState<'none' | 'drag' | 'resize' | 'rotate'>('none')
@@ -601,11 +602,11 @@ export default function SourceManager() {
 
     return (
         <div className="h-screen flex flex-col bg-slate-100">
-            {/* HEADER */}
-            <header className="bg-white border-b px-4 py-2 flex items-center justify-between shadow-sm">
-                <h1 className="text-lg font-bold text-slate-800">📜 Source Clipper</h1>
+            {/* HEADER - Only show when editing/preview */}
+            {(appState === 'editing' || appState === 'preview') && pages.length > 0 && (
+                <header className="bg-white border-b px-4 py-2 flex items-center justify-between shadow-sm">
+                    <h1 className="text-lg font-bold text-slate-800">📜 Source Clipper</h1>
 
-                {pages.length > 0 && (
                     <div className="flex items-center gap-2 text-sm">
                         {/* Draw mode */}
                         <div className="flex bg-slate-100 rounded p-0.5">
@@ -648,8 +649,8 @@ export default function SourceManager() {
 
                         {statusMessage && <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded">{statusMessage}</span>}
                     </div>
-                )}
-            </header>
+                </header>
+            )}
 
             {/* MAIN */}
             <div className="flex-1 flex overflow-hidden">
@@ -810,32 +811,63 @@ export default function SourceManager() {
 
                                 {/* Drawing preview - polygon with LINES */}
                                 {polygonPoints.length > 0 && (
-                                    <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                                        {/* Lines connecting points */}
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 50 }}>
+                                        {/* Filled preview area */}
+                                        {polygonPoints.length >= 3 && (
+                                            <polygon
+                                                points={polygonPoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                                                fill="rgba(59, 130, 246, 0.15)"
+                                                stroke="none"
+                                            />
+                                        )}
+                                        {/* Lines connecting all points - ALWAYS visible */}
                                         {polygonPoints.length > 1 && (
                                             <polyline
                                                 points={polygonPoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
                                                 fill="none"
-                                                stroke="#3b82f6"
-                                                strokeWidth="1"
+                                                stroke="#2563eb"
+                                                strokeWidth="2"
                                             />
                                         )}
-                                        {/* Points */}
-                                        {polygonPoints.map((p, i) => (
-                                            <circle key={i} cx={`${p.x}%`} cy={`${p.y}%`} r="4" fill="#3b82f6" stroke="white" strokeWidth="1" />
-                                        ))}
-                                        {/* Closing line preview */}
+                                        {/* Closing line preview - dashed */}
                                         {polygonPoints.length >= 3 && (
                                             <line
                                                 x1={`${polygonPoints[polygonPoints.length - 1].x}%`}
                                                 y1={`${polygonPoints[polygonPoints.length - 1].y}%`}
                                                 x2={`${polygonPoints[0].x}%`}
                                                 y2={`${polygonPoints[0].y}%`}
-                                                stroke="#3b82f6"
+                                                stroke="#2563eb"
                                                 strokeWidth="2"
                                                 strokeDasharray="5,5"
                                             />
                                         )}
+                                        {/* Points - larger and more visible */}
+                                        {polygonPoints.map((p, i) => (
+                                            <circle
+                                                key={i}
+                                                cx={`${p.x}%`}
+                                                cy={`${p.y}%`}
+                                                r="6"
+                                                fill="#2563eb"
+                                                stroke="white"
+                                                strokeWidth="2"
+                                            />
+                                        ))}
+                                        {/* Point labels */}
+                                        {polygonPoints.map((p, i) => (
+                                            <text
+                                                key={`label-${i}`}
+                                                x={`${p.x}%`}
+                                                y={`${p.y}%`}
+                                                dy="-12"
+                                                textAnchor="middle"
+                                                fontSize="10"
+                                                fill="#1e40af"
+                                                fontWeight="bold"
+                                            >
+                                                {i + 1}
+                                            </text>
+                                        ))}
                                     </svg>
                                 )}
                             </div>
@@ -942,8 +974,7 @@ export default function SourceManager() {
                                         <select
                                             value={selectedShiurId || ''}
                                             onChange={(e) => setSelectedShiurId(e.target.value || null)}
-                                            className="px-3 py-2 border rounded text-sm bg-white max-w-full"
-                                            style={{ width: 'auto', minWidth: '200px', maxWidth: '100%' }}
+                                            className="w-full px-3 py-2.5 border rounded-lg text-sm bg-white"
                                             disabled={loadingShiurim || saving}
                                         >
                                             <option value="">-- Select a Shiur --</option>
