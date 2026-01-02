@@ -7,7 +7,7 @@ import SourceSheetViewer from '@/components/SourceSheetViewer'
 import StickyAudioPlayer from '@/components/StickyAudioPlayer'
 import { getDb, getD1Database } from '@/lib/db'
 import { shiurim, platformLinks } from '@/lib/schema'
-import { eq } from 'drizzle-orm'
+import { eq, or } from 'drizzle-orm'
 
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
@@ -27,7 +27,7 @@ async function getShiurBySlug(slug: string) {
         const shiur = await db
             .select()
             .from(shiurim)
-            .where(eq(shiurim.slug, slug))
+            .where(or(eq(shiurim.slug, slug), eq(shiurim.id, slug)))
             .get()
 
         if (!shiur) {
@@ -148,8 +148,8 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                 )}
 
                 {/* Source Sheet */}
-                {shiur.sourceDoc && (
-                    <SourceSheetViewer sourceDoc={shiur.sourceDoc} title={shiur.title} />
+                {(shiur.sourceDoc || shiur.sourcesJson) && (
+                    <SourceSheetViewer sourceDoc={shiur.sourceDoc} sourcesJson={shiur.sourcesJson} title={shiur.title} />
                 )}
 
                 {/* Thumbnail at bottom - auto-pull from YouTube or use manual */}
