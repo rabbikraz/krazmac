@@ -115,7 +115,34 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
                 </div>
 
                 {/* Controls Area */}
-                <div className="flex items-center gap-3 self-end md:self-auto">
+                <div className="flex items-center gap-4 self-end md:self-auto">
+
+                    {/* Expand/Collapse Toggle (Only in Clipped View) */}
+                    {!showPdf && hasAnySources && (
+                        <button
+                            onClick={() => {
+                                if (expandedSources.size > 0) {
+                                    collapseAll()
+                                } else {
+                                    expandAll()
+                                }
+                            }}
+                            className="bg-white/10 hover:bg-white/20 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                            {expandedSources.size > 0 ? (
+                                <>
+                                    <ChevronUp size={14} />
+                                    Collapse All
+                                </>
+                            ) : (
+                                <>
+                                    <ChevronDown size={14} />
+                                    Expand All
+                                </>
+                            )}
+                        </button>
+                    )}
+
                     {/* View Toggle (Only if both formats exist) */}
                     {hasAnySources && hasPdfUrl && (
                         <div className="flex items-center bg-slate-900/50 p-1 rounded-lg">
@@ -126,7 +153,7 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
                                     : 'text-slate-300 hover:text-white hover:bg-white/5'
                                     }`}
                             >
-                                Clipped View
+                                Clipped
                             </button>
                             <button
                                 onClick={() => setShowPdf(true)}
@@ -135,27 +162,7 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
                                     : 'text-slate-300 hover:text-white hover:bg-white/5'
                                     }`}
                             >
-                                Original PDF
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Expand/Collapse (Only in Clipped View) */}
-                    {!showPdf && hasAnySources && (
-                        <div className="flex items-center gap-1 bg-white/10 p-1 rounded-lg">
-                            <button
-                                onClick={expandAll}
-                                className="text-xs text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-white/10"
-                                title="Expand All"
-                            >
-                                <ChevronDown size={14} />
-                            </button>
-                            <button
-                                onClick={collapseAll}
-                                className="text-xs text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-white/10"
-                                title="Collapse All"
-                            >
-                                <ChevronUp size={14} />
+                                PDF
                             </button>
                         </div>
                     )}
