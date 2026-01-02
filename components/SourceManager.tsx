@@ -13,8 +13,9 @@ interface Source {
     polygon: Array<{ x: number; y: number }> | null
     rotation: number
     clippedImage: string | null
-    name: string  // User-editable name
+    name: string
     reference: string | null
+    displaySize: number  // Percentage 25-100 for how big to show on shiur page
 }
 
 interface PageData {
@@ -28,6 +29,7 @@ interface Shiur {
     id: string
     title: string
     slug: string
+    sourceDoc?: string | null
 }
 
 type AppState = 'upload' | 'processing' | 'editing' | 'preview'
@@ -178,7 +180,12 @@ export default function SourceManager() {
                 const data = await res.json()
                 // API returns array directly, not { shiurim: [...] }
                 if (Array.isArray(data)) {
-                    setShiurim(data.map((s: any) => ({ id: s.id, title: s.title, slug: s.slug })))
+                    setShiurim(data.map((s: any) => ({
+                        id: s.id,
+                        title: s.title,
+                        slug: s.slug,
+                        sourceDoc: s.sourceDoc
+                    })))
                 } else {
                     console.error('Unexpected shiurim response:', data)
                 }
@@ -263,7 +270,8 @@ export default function SourceManager() {
                     rotation: 0,
                     clippedImage: null,
                     name: s.reference || `Source ${idx + 1}`,
-                    reference: s.reference || null
+                    reference: s.reference || null,
+                    displaySize: 75
                 }))
             }
             return []
@@ -287,6 +295,10 @@ export default function SourceManager() {
         setSources(prev => prev.map(s => s.id === id ? { ...s, rotation, clippedImage: null } : s))
     }
 
+    const updateSourceSize = (id: string, size: number) => {
+        setSources(prev => prev.map(s => s.id === id ? { ...s, displaySize: size } : s))
+    }
+
     const clearPage = () => {
         setSources(prev => prev.filter(s => s.pageIndex !== currentPageIndex))
     }
@@ -303,7 +315,8 @@ export default function SourceManager() {
                 rotation: 0,
                 clippedImage: null,
                 name: `Source ${i + 1}`,
-                reference: null
+                reference: null,
+                displaySize: 75
             })
         }
         setSources(prev => [...prev.filter(s => s.pageIndex !== currentPageIndex), ...newSources])
@@ -339,7 +352,8 @@ export default function SourceManager() {
                 rotation: 0,
                 clippedImage: null,
                 name: `Polygon ${prev.length + 1}`,
-                reference: null
+                reference: null,
+                displaySize: 75
             }])
         }
         setPolygonPoints([])
@@ -438,7 +452,8 @@ export default function SourceManager() {
                 rotation: 0,
                 clippedImage: null,
                 name: `Source ${prev.length + 1}`,
-                reference: null
+                reference: null,
+                displaySize: 75
             }])
         }
         setIsDrawing(false)
@@ -541,12 +556,13 @@ export default function SourceManager() {
             })
 
             // Store as JSON with individual source images for HTML rendering
-            const sourceData = sources.map((source, idx) => ({
+            const sourceData = sources.map((source) => ({
                 id: source.id,
                 name: source.name,
                 image: source.clippedImage,
                 rotation: source.rotation,
-                reference: source.reference
+                reference: source.reference,
+                displaySize: source.displaySize || 'medium'
             }))
 
             // Save as JSON string prefixed with "sources:" to distinguish from URLs
@@ -815,68 +831,143 @@ export default function SourceManager() {
                             ) : (
                                 <div className="space-y-6">
                                     {sources.map((source, idx) => (
-                                        <div key={source.id} className="border rounded-lg overflow-hidden shadow-sm">
-                                            {/* Editable name header */}
-                                            <div className="bg-slate-50 px-4 py-2 flex items-center gap-2">
-                                                <span className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{idx + 1}</span>
-                                                <input
-                                                    type="text"
-                                                    value={source.name}
-                                                    onChange={(e) => updateSourceName(source.id, e.target.value)}
-                                                    className="flex-1 bg-transparent font-medium border-b border-transparent focus:border-blue-500 focus:outline-none"
-                                                    placeholder="Source name..."
-                                                />
-                                                {/* MANUAL ROTATION INPUT */}
-                                                <div className="flex items-center gap-1">
+                                        <div key={source.id} className="group bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-hidden">
+                                            {/* Header with Title and Type */}
+                                            <div className="bg-slate-50/50 px-4 py-3 border-b border-slate-100 flex items-start gap-3">
+                                                <span className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center mt-1">{idx + 1}</span>
+                                                <div className="flex-1 space-y-2">
                                                     <input
-                                                        type="number"
-                                                        value={source.rotation}
-                                                        onChange={(e) => updateSourceRotation(source.id, parseInt(e.target.value) || 0)}
-                                                        className="w-16 text-xs px-2 py-1 border rounded text-center"
-                                                        min="-180"
-                                                        max="180"
+                                                        type="text"
+                                                        value={source.name}
+                                                        onChange={(e) => updateSourceName(source.id, e.target.value)}
+                                                        className="w-full bg-transparent font-semibold text-slate-800 placeholder-slate-400 focus:outline-none"
+                                                        placeholder="Source Title"
                                                     />
-                                                    <span className="text-xs text-slate-500">°</span>
+
+                                                    {/* Controls Row */}
+                                                    <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                                                        {/* Rotation */}
+                                                        <div className="flex items-center gap-2 bg-white border rounded-lg px-2 py-1 shadow-sm">
+                                                            <span className="text-xs font-medium uppercase tracking-wider text-slate-400">Rot</span>
+                                                            <input
+                                                                type="number"
+                                                                value={source.rotation}
+                                                                onChange={(e) => updateSourceRotation(source.id, parseInt(e.target.value) || 0)}
+                                                                className="w-12 text-center font-mono focus:outline-none"
+                                                                min="-180"
+                                                                max="180"
+                                                            />
+                                                            <span className="text-slate-400">°</span>
+                                                        </div>
+
+                                                        {/* Size Slider */}
+                                                        <div className="flex items-center gap-2 bg-white border rounded-lg px-2 py-1 shadow-sm flex-1 min-w-[140px]">
+                                                            <span className="text-xs font-medium uppercase tracking-wider text-slate-400">Size</span>
+                                                            <input
+                                                                type="range"
+                                                                min="25"
+                                                                max="100"
+                                                                step="5"
+                                                                value={source.displaySize || 75}
+                                                                onChange={(e) => updateSourceSize(source.id, parseInt(e.target.value))}
+                                                                className="flex-1 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                            />
+                                                            <span className="w-8 text-right font-mono text-xs">{source.displaySize || 75}%</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <button onClick={() => deleteSource(source.id)} className="text-red-500 hover:bg-red-100 rounded px-2 text-sm">Delete</button>
+
+                                                <button
+                                                    onClick={() => deleteSource(source.id)}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1"
+                                                    title="Delete Source"
+                                                >
+                                                    <span className="text-xl">×</span>
+                                                </button>
                                             </div>
-                                            {/* Image */}
-                                            {source.clippedImage ? (
-                                                <img src={source.clippedImage} alt={source.name} className="w-full" />
-                                            ) : (
-                                                <div className="h-24 bg-slate-100 flex items-center justify-center text-slate-400">No preview</div>
-                                            )}
+
+                                            {/* Image Preview - Scaled by displaySize for preview accuracy */}
+                                            <div className="p-4 bg-slate-50/30 flex justify-center">
+                                                {source.clippedImage ? (
+                                                    <div style={{ width: `${source.displaySize || 75}%`, transition: 'width 0.2s' }}>
+                                                        <img
+                                                            src={source.clippedImage}
+                                                            alt={source.name}
+                                                            className="w-full shadow-sm rounded border border-slate-200"
+                                                            style={{ transform: `rotate(${source.rotation === 0 ? 0 : 0}deg)` }} // Rotation is already baked into clipped image for box, but keep for polygon if needed later
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <div className="h-24 w-full bg-slate-50 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-sm">
+                                                        No preview available
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
                             {/* APPLY TO SHIUR */}
-                            {sources.length > 0 && (
-                                <div className="mt-8 p-4 bg-slate-50 rounded-lg border">
-                                    <h2 className="font-semibold mb-3 text-sm">Attach to Shiur</h2>
-                                    <div className="flex flex-col gap-2">
-                                        <select
-                                            value={selectedShiurId || ''}
-                                            onChange={(e) => setSelectedShiurId(e.target.value || null)}
-                                            className="w-full px-3 py-2 border rounded text-sm"
-                                            disabled={loadingShiurim || saving}
-                                        >
-                                            <option value="">-- Select a Shiur --</option>
-                                            {shiurim.map(s => (
-                                                <option key={s.id} value={s.id}>{s.title}</option>
-                                            ))}
-                                        </select>
+                            {/* APPLY / LOAD FROM SHIUR */}
+                            <div className="mt-8 p-4 bg-slate-50 rounded-lg border">
+                                <h2 className="font-semibold mb-3 text-sm">Manage Shiur Sources</h2>
+                                <div className="flex flex-col gap-3">
+                                    <select
+                                        value={selectedShiurId || ''}
+                                        onChange={(e) => setSelectedShiurId(e.target.value || null)}
+                                        className="w-full px-3 py-2 border rounded text-sm"
+                                        disabled={loadingShiurim || saving}
+                                    >
+                                        <option value="">-- Select a Shiur --</option>
+                                        {shiurim.map(s => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.title} {s.sourceDoc?.startsWith('sources:') ? '(Has Sources)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    {/* Load Button - Only if shiur has JSON sources */}
+                                    {selectedShiurId && shiurim.find(s => s.id === selectedShiurId)?.sourceDoc?.startsWith('sources:') && (
                                         <button
-                                            onClick={applyToShiur}
-                                            disabled={!selectedShiurId || saving}
-                                            className="w-full px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                            onClick={() => {
+                                                const s = shiurim.find(s => s.id === selectedShiurId)
+                                                if (s?.sourceDoc && confirm('This will replace your current workspace with the sources from this shiur. You will only be able to reorder/rename/resize them, not re-crop (original PDF is not stored). Continue?')) {
+                                                    try {
+                                                        const json = s.sourceDoc.slice(8)
+                                                        const data = JSON.parse(json)
+                                                        setSources(data.map((src: any) => ({
+                                                            id: src.id || `restored-${Date.now()}`,
+                                                            pageIndex: 0, // Dummy
+                                                            box: null,
+                                                            polygon: null,
+                                                            rotation: src.rotation || 0,
+                                                            clippedImage: src.image,
+                                                            name: src.name,
+                                                            reference: src.reference,
+                                                            displaySize: src.displaySize || 75
+                                                        })))
+                                                        setStatusMessage('Sources loaded')
+                                                    } catch (e) {
+                                                        alert('Failed to parse sources')
+                                                    }
+                                                }
+                                            }}
+                                            className="w-full px-4 py-2 border border-blue-600 text-blue-600 rounded font-medium hover:bg-blue-50 text-sm"
                                         >
-                                            {saving ? 'Saving...' : 'Apply to Shiur'}
+                                            Load Existing Sources for Editing
                                         </button>
-                                    </div>
+                                    )}
+
+                                    <button
+                                        onClick={applyToShiur}
+                                        disabled={!selectedShiurId || saving || sources.length === 0}
+                                        className="w-full px-4 py-2 bg-blue-600 text-white rounded font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                    >
+                                        {saving ? 'Saving...' : 'Apply Current Sources to Shiur'}
+                                    </button>
                                 </div>
-                            )}
+                            </div>
                         </div>
                     </div>
                 )}

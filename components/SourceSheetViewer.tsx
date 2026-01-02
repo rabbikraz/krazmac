@@ -1,7 +1,7 @@
 'use client'
 
 import { ExternalLink } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 interface SourceSheetViewerProps {
   sourceDoc: string
@@ -14,6 +14,7 @@ interface SourceData {
   image: string | null
   rotation: number
   reference: string | null
+  displaySize?: number
 }
 
 // Convert Google Drive/Docs URL to embeddable format
@@ -34,6 +35,70 @@ function convertToEmbedUrl(url: string): string {
   }
 
   return url
+}
+
+function CollapsibleSource({ source, index }: { source: SourceData; index: number }) {
+  const [isOpen, setIsOpen] = useState(false) // Collapsed by default
+
+  return (
+    <article
+      className={`group bg-white rounded-2xl border transition-all duration-300 overflow-hidden ${isOpen ? 'border-slate-200 shadow-md ring-1 ring-blue-100' : 'border-slate-100 shadow-sm hover:border-blue-200'
+        }`}
+    >
+      {/* Source Header - Clickable to toggle */}
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-4 px-5 py-4 bg-gradient-to-r from-slate-50 to-transparent border-b border-transparent cursor-pointer hover:bg-slate-50 transition-colors"
+      >
+        <div className={`flex-shrink-0 w-10 h-10 transition-colors duration-300 rounded-xl flex items-center justify-center shadow-sm font-bold ${isOpen ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-700'
+          }`}>
+          {index + 1}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h3 className={`font-semibold truncate text-lg transition-colors ${isOpen ? 'text-blue-700' : 'text-slate-700'}`}>
+            {source.name}
+          </h3>
+          {source.reference && (
+            <p className="text-sm text-slate-500 font-medium mt-0.5">
+              {source.reference}
+            </p>
+          )}
+        </div>
+
+        <div className={`transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}>
+          <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Source Image - Collapsible content */}
+      <div
+        className={`bg-slate-50 border-t border-slate-100 transition-all duration-500 ease-in-out ${isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'
+          }`}
+      >
+        {source.image && (
+          <div className="p-4 md:p-8 flex justify-center">
+            <div
+              className="relative bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden transition-all duration-500"
+              style={{ width: `${source.displaySize || 75}%` }}
+            >
+              <img
+                src={source.image}
+                alt={source.name}
+                className="w-full block"
+                style={{
+                  transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined,
+                  transformOrigin: 'center'
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  )
 }
 
 export default function SourceSheetViewer({ sourceDoc, title }: SourceSheetViewerProps) {
@@ -80,53 +145,16 @@ export default function SourceSheetViewer({ sourceDoc, title }: SourceSheetViewe
         </div>
 
         {/* Sources List */}
-        <div className="p-4 md:p-6 lg:p-8 space-y-6">
+        <div className="p-4 md:p-6 lg:p-8 space-y-4">
           {sources.map((source, idx) => (
-            <article
-              key={source.id}
-              className="group bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-xl hover:border-blue-200 transition-all duration-300 overflow-hidden"
-            >
-              {/* Source Header */}
-              <div className="flex items-center gap-4 px-5 py-4 bg-gradient-to-r from-slate-50 to-transparent border-b border-slate-100">
-                <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
-                  {idx + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-slate-800 truncate text-lg">
-                    {source.name}
-                  </h3>
-                  {source.reference && (
-                    <p className="text-sm text-blue-600 font-medium mt-0.5">
-                      {source.reference}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Source Image */}
-              {source.image && (
-                <div className="relative bg-gradient-to-b from-slate-50 to-slate-100 p-4 md:p-6">
-                  <div className="bg-white rounded-xl shadow-inner border border-slate-200/50 overflow-hidden">
-                    <img
-                      src={source.image}
-                      alt={source.name}
-                      className="w-full block"
-                      style={{
-                        transform: source.rotation ? `rotate(${source.rotation}deg)` : undefined,
-                        transformOrigin: 'center'
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-            </article>
+            <CollapsibleSource key={source.id} source={source} index={idx} />
           ))}
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-400">
-            Source sheet created with Rabbi Kraz's Source Clipper
+            Click on a source header to expand/collapse
           </p>
         </div>
       </div>
