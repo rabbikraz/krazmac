@@ -112,8 +112,7 @@ export async function PUT(
     // Build update data
     const updateData: any = {}
     if (data.title !== undefined) updateData.title = data.title
-    // Slug column is always null if ID serves as the slug.
-    updateData.slug = null
+    updateData.slug = null // Slug column is always null if ID serves as the slug
 
     if (data.description !== undefined) updateData.description = data.description
     if (data.blurb !== undefined) updateData.blurb = data.blurb
@@ -129,49 +128,75 @@ export async function PUT(
     let updatedShiur
 
     if (newId !== id) {
-      // 1. Get current shiur data BEFORE doing anything
-      const currentShiur = await db
-        .select()
-        .from(shiurim)
-        .where(eq(shiurim.id, id))
-        .get()
+      // HANDLE ID CHANGE (Migrating to Slug ID)
+      console.log(`[Migrate] Changing ID from ${id} to ${newId}`)
 
-      if (currentShiur) {
-        // 2. Insert new record with new ID first
+      try {
+        // 1. Get current data before deletion
+        const currentShiur = await db
+          .select()
+          .from(shiurim)
+          .where(eq(shiurim.id, id))
+          .get()
+
+        if (!currentShiur) {
+          return NextResponse.json({ error: 'Shiur not found' }, { status: 404 })
+        }
+
+        // 2. Get existing platform links (because cascade delete will wipe them)
+        const currentLinks = await db
+          .select()
+          .from(platformLinks)
+          .where(eq(platformLinks.shiurId, id))
+          .get()
+
+        // 3. Delete Old Record (Cascades to links) to free up the 'guid' unique constraint
+        await db.delete(shiurim).where(eq(shiurim.id, id)).execute()
+
+        // 4. Create NEW record with NEW ID
         await db.insert(shiurim).values({
           id: newId,
-          guid: currentShiur.guid,
-          slug: null, // ID is now the slug
-          title: data.title ?? currentShiur.title,
-          description: data.description ?? currentShiur.description,
-          blurb: data.blurb ?? currentShiur.blurb,
-          audioUrl: data.audioUrl ?? currentShiur.audioUrl,
-          sourceDoc: data.sourceDoc ?? currentShiur.sourceDoc,
-          sourcesJson: data.sourcesJson ?? currentShiur.sourcesJson,
-          pubDate: data.pubDate ? new Date(data.pubDate) : currentShiur.pubDate,
-          duration: data.duration ?? currentShiur.duration,
-          link: data.link ?? currentShiur.link,
-          thumbnail: data.thumbnail ?? currentShiur.thumbnail,
+          guid: currentShiur.guid, // We can preserve GUID now that old record is gone
+          slug: null,
+          title: updateData.title ?? currentShiur.title,
+          description: updateData.description ?? currentShiur.description,
+          blurb: updateData.blurb ?? currentShiur.blurb,
+          audioUrl: updateData.audioUrl ?? currentShiur.audioUrl,
+          sourceDoc: updateData.sourceDoc ?? currentShiur.sourceDoc,
+          sourcesJson: updateData.sourcesJson ?? currentShiur.sourcesJson,
+          pubDate: updateData.pubDate ? new Date(updateData.pubDate) : new Date(currentShiur.pubDate),
+          duration: updateData.duration ?? currentShiur.duration,
+          link: updateData.link ?? currentShiur.link,
+          thumbnail: updateData.thumbnail ?? currentShiur.thumbnail,
           createdAt: currentShiur.createdAt,
           updatedAt: new Date(),
         }).execute()
 
-        // 3. Update platform_links to point to new ID
-        await db
-          .update(platformLinks)
-          .set({ shiurId: newId })
-          .where(eq(platformLinks.shiurId, id))
-          .execute()
-
-        // 4. Delete old record
-        await db.delete(shiurim).where(eq(shiurim.id, id)).execute()
+        // 5. Restore Platform Links with New ID
+        if (currentLinks) {
+          await db.insert(platformLinks).values({
+            shiurId: newId,
+            youtube: currentLinks.youtube,
+            youtubeMusic: currentLinks.youtubeMusic,
+            spotify: currentLinks.spotify,
+            apple: currentLinks.apple,
+            amazon: currentLinks.amazon,
+            pocket: currentLinks.pocket,
+            twentyFourSix: currentLinks.twentyFourSix,
+            castbox: currentLinks.castbox,
+            createdAt: currentLinks.createdAt,
+            updatedAt: new Date(),
+          }).execute()
+        }
 
         updatedShiur = await db.select().from(shiurim).where(eq(shiurim.id, newId)).get()
-      } else {
-        return NextResponse.json({ error: 'Shiur not found' }, { status: 404 })
+      } catch (err) {
+        console.error('[Migrate] Error during ID migration:', err);
+        return NextResponse.json({ error: `Migration failed: ${err instanceof Error ? err.message : String(err)}` }, { status: 500 });
       }
+
     } else {
-      // Normal update without ID change
+      // NORMAL UPDATE (No ID change)
       updatedShiur = await db
         .update(shiurim)
         .set(updateData)
@@ -180,12 +205,15 @@ export async function PUT(
         .get()
     }
 
-    // Update or create platform links - use newId since ID may have changed
+    // Update or create platform links (Normal flow if ID didn't change, or update newly restored links)
+    // If ID changed, we just restored them above, but we might have NEW data in `data.platformLinks` to apply.
     if (data.platformLinks) {
+      const targetId = newId; // Use the valid ID (either old or new)
+
       const existingLinks = await db
         .select()
         .from(platformLinks)
-        .where(eq(platformLinks.shiurId, newId))
+        .where(eq(platformLinks.shiurId, targetId))
         .get()
 
       if (existingLinks) {
@@ -195,13 +223,13 @@ export async function PUT(
             ...data.platformLinks,
             updatedAt: new Date(),
           })
-          .where(eq(platformLinks.shiurId, newId))
+          .where(eq(platformLinks.shiurId, targetId))
           .execute()
       } else {
         await db
           .insert(platformLinks)
           .values({
-            shiurId: newId,
+            shiurId: targetId,
             ...data.platformLinks,
           })
           .execute()
