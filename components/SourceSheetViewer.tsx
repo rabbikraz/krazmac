@@ -276,7 +276,7 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
             {/* LIGHTBOX OVERLAY */}
             {previewImage && (
                 <div
-                    className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-200 cursor-zoom-out"
+                    className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-200 cursor-default"
                     onClick={() => setPreviewImage(null)} // Clicking ANYWHERE on the background closes it
                 >
                     {/* Toolbar */}

@@ -98,10 +98,10 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
             <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
                 {/* Floating Island Design on Desktop, Full Width on Mobile */}
                 <div className="mx-auto max-w-3xl md:mb-6 pointer-events-auto">
-                    <div className="bg-white/95 backdrop-blur-md md:rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-t md:border border-gray-200/50 p-4 safe-area-pb relative">
+                    <div className="bg-white/95 backdrop-blur-md md:rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-t md:border border-gray-200/50 px-4 py-2 safe-area-pb relative">
 
                         {/* Elegant Hide Button with Text */}
-                        <div className="absolute top-2 right-4 z-20">
+                        <div className="absolute top-1 right-4 z-20">
                             <button
                                 onClick={() => setIsMinimized(true)}
                                 className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-gray-400 hover:text-primary transition-colors uppercase py-1 px-2 rounded-full hover:bg-gray-50/50"
@@ -112,7 +112,7 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
                             </button>
                         </div>
 
-                        <div className="flex flex-col gap-3 pt-4 md:pt-2">
+                        <div className="flex flex-col gap-2 pt-4 md:pt-2">
                             {/* Added top padding to clear the hide button */}
                             <div className="flex items-center justify-between gap-4">
 
