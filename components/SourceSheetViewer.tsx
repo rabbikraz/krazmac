@@ -242,9 +242,9 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
                                                         loading="lazy"
                                                     />
 
-                                                    {/* Hover Overlay for Zoom Hint */}
-                                                    <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover/image:opacity-100 duration-200">
-                                                        <div className="bg-white/90 backdrop-blur rounded-full px-3 py-1.5 flex items-center gap-2 shadow-sm text-xs font-medium text-gray-700 pointer-events-none">
+                                                    {/* Hover Overlay for Zoom Hint - Top Right Corner, No Blur */}
+                                                    <div className="absolute top-3 right-3 opacity-0 group-hover/image:opacity-100 transition-opacity duration-200 pointer-events-none">
+                                                        <div className="bg-black/50 backdrop-blur-md text-white px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-medium shadow-sm">
                                                             <Maximize2 size={14} />
                                                             Expand
                                                         </div>
@@ -276,8 +276,8 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
             {/* LIGHTBOX OVERLAY */}
             {previewImage && (
                 <div
-                    className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-200"
-                    onClick={() => setPreviewImage(null)} // Close on background click
+                    className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col animate-in fade-in duration-200 cursor-zoom-out"
+                    onClick={() => setPreviewImage(null)} // Clicking ANYWHERE on the background closes it
                 >
                     {/* Toolbar */}
                     <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-50 pointer-events-none">
@@ -295,17 +295,17 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
 
                     {/* Image Container */}
                     <div
-                        className={`flex-1 flex w-full h-full overflow-hidden ${isZoomed ? 'overflow-auto cursor-zoom-out' : 'items-center justify-center cursor-zoom-in'}`}
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            // Toggle Zoom on Image Click
-                            setIsZoomed(!isZoomed)
-                        }}
+                        className={`flex-1 flex w-full h-full overflow-hidden ${isZoomed ? 'overflow-auto cursor-default' : 'items-center justify-center'}`}
+                    // Container click just bubbles up to Overlay close (no stopPropagation here)
                     >
                         <img
                             src={previewImage}
                             alt="Source Preview"
-                            className={`transition-all duration-300 ${isZoomed ? 'min-w-full min-h-full object-none' : 'max-w-full max-h-screen object-contain p-4'}`}
+                            className={`transition-all duration-300 shadow-2xl ${isZoomed ? 'min-w-full min-h-full object-none cursor-zoom-out' : 'max-w-full max-h-screen object-contain p-4 cursor-zoom-in'}`}
+                            onClick={(e) => {
+                                e.stopPropagation() // Don't close when clicking image
+                                setIsZoomed(!isZoomed) // Toggle Zoom instead
+                            }}
                         />
                     </div>
 
