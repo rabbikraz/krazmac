@@ -39,6 +39,9 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
     const [previewImage, setPreviewImage] = useState<string | null>(null)
     const [isZoomed, setIsZoomed] = useState(false)
 
+    const hasPdfUrl = !!sourceDoc
+    const hasAnySources = allSources.length > 0
+
     // Load sources from JSON
     useEffect(() => {
         if (sourcesJson) {
@@ -96,8 +99,7 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
         setExpandedSources(new Set())
     }
 
-    const hasPdfUrl = !!sourceDoc
-    const hasAnySources = allSources.length > 0
+
 
     if (!hasAnySources && !hasPdfUrl) return null
 
