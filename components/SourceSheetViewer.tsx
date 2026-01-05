@@ -91,10 +91,11 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
 
     // If no sources but we have a PDF, just show PDF.
     // If we have sources, show Clipped View by default.
-    // Unless manual toggle.
     useEffect(() => {
         if (!hasAnySources && hasPdfUrl) {
             setShowPdf(true)
+        } else if (hasAnySources) {
+            setShowPdf(false)
         }
     }, [hasAnySources, hasPdfUrl])
 

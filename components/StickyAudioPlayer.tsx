@@ -81,10 +81,10 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
                 <audio ref={audioRef} src={shiur.audioUrl} preload="metadata" />
                 <button
                     onClick={() => setIsMinimized(false)}
-                    className="fixed bottom-6 right-6 z-50 bg-white/95 backdrop-blur text-primary px-5 py-3 rounded-full shadow-xl border border-gray-100 hover:scale-105 transition-transform flex items-center gap-3 font-medium text-sm group"
+                    className="fixed bottom-4 right-4 z-50 bg-white/95 backdrop-blur text-primary px-3 py-2 rounded-full shadow-lg border border-gray-100 hover:scale-105 transition-transform flex items-center gap-2 font-medium text-xs group"
                 >
-                    <div className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                        {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                        {isPlaying ? <Pause size={10} fill="currentColor" /> : <Play size={10} fill="currentColor" className="ml-0.5" />}
                     </div>
                     <span>Resume</span>
                 </button>
@@ -95,37 +95,38 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
     return (
         <>
             <audio ref={audioRef} src={shiur.audioUrl} preload="metadata" />
-            <div className="fixed bottom-0 left-0 right-0 z-50">
+            <div className="fixed bottom-0 left-0 right-0 z-50 pointer-events-none">
                 {/* Floating Island Design on Desktop, Full Width on Mobile */}
-                <div className="mx-auto max-w-3xl md:mb-6">
+                <div className="mx-auto max-w-3xl md:mb-6 pointer-events-auto">
                     <div className="bg-white/95 backdrop-blur-md md:rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-t md:border border-gray-200/50 p-4 safe-area-pb relative">
 
-                        {/* Minimize Button */}
+                        {/* Explicit Hide Button (Desktop & Mobile) */}
                         <button
                             onClick={() => setIsMinimized(true)}
-                            className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 transition-colors md:hover:bg-gray-100 p-1 rounded-full"
-                            title="Hide Player"
+                            className="absolute right-3 top-3 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors px-2 py-1 rounded-md text-[10px] font-medium flex items-center gap-1 shadow-sm border border-gray-100"
+                            title="Collapse Player"
                         >
-                            <ChevronDown size={20} />
+                            <ChevronDown size={12} />
+                            Hide
                         </button>
 
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-3 pt-2 md:pt-1">
                             <div className="flex items-center justify-between gap-4">
 
                                 {/* Controls Group */}
                                 <div className="flex items-center gap-3 md:gap-6 mx-auto md:mx-0">
-                                    {/* Rewind 30s (Visible on Mobile now too) */}
+                                    {/* Rewind 30s */}
                                     <button
                                         onClick={() => {
                                             if (audioRef.current) {
                                                 audioRef.current.currentTime = Math.max(0, currentTime - 30)
                                             }
                                         }}
-                                        className="text-gray-500 hover:text-primary transition-colors flex flex-col items-center gap-0.5 group p-2"
+                                        className="text-gray-400 hover:text-primary transition-colors flex flex-col items-center gap-0.5 group p-2"
                                         title="Rewind 30s"
                                     >
                                         <RotateCcw size={18} strokeWidth={1.5} />
-                                        <span className="text-[10px] font-medium text-gray-400 group-hover:text-primary">30</span>
+                                        <span className="text-[10px] font-medium group-hover:text-primary">30</span>
                                     </button>
 
                                     {/* Play button */}
@@ -140,18 +141,18 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
                                         )}
                                     </button>
 
-                                    {/* Forward 30s (Visible on Mobile now too) */}
+                                    {/* Forward 30s */}
                                     <button
                                         onClick={() => {
                                             if (audioRef.current) {
                                                 audioRef.current.currentTime = Math.min(duration, currentTime + 30)
                                             }
                                         }}
-                                        className="text-gray-500 hover:text-primary transition-colors flex flex-col items-center gap-0.5 group p-2"
+                                        className="text-gray-400 hover:text-primary transition-colors flex flex-col items-center gap-0.5 group p-2"
                                         title="Forward 30s"
                                     >
                                         <RotateCw size={18} strokeWidth={1.5} />
-                                        <span className="text-[10px] font-medium text-gray-400 group-hover:text-primary">30</span>
+                                        <span className="text-[10px] font-medium group-hover:text-primary">30</span>
                                     </button>
                                 </div>
 
@@ -206,7 +207,7 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
                                 </div>
                             </div>
 
-                            {/* Mobile Only: Progress Bar & Time underneath specific layout */}
+                            {/* Mobile Only: Progress Bar & Time */}
                             <div className="md:hidden flex items-center gap-3">
                                 <span className="text-[10px] text-gray-400 font-medium w-8 text-right tabular-nums">{formatTime(currentTime)}</span>
                                 <div className="flex-1 h-1 bg-gray-100 rounded-full relative">
