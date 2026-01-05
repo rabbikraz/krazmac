@@ -135,15 +135,15 @@ export default function StickyAudioPlayer({ shiur }: StickyAudioPlayerProps) {
                     {/* Padding Adjust: py-3 mobile, md:px-6 md:py-2 desktop (Compact) */}
                     <div className="bg-white/95 backdrop-blur-md md:rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-t md:border border-gray-200/50 px-4 py-3 md:px-6 md:py-2 safe-area-pb relative">
 
-                        {/* Elegant Hide Button with Text */}
-                        <div className="absolute top-1 right-4 z-20">
+                        {/* Elegant Hide Button with Text - Option 1: Moved to Left to avoid Speed button crowding */}
+                        <div className="absolute top-1 left-4 z-20">
                             <button
                                 onClick={() => setIsMinimized(true)}
                                 className="flex items-center gap-1 text-[10px] font-semibold tracking-wide text-gray-400 hover:text-primary transition-colors uppercase py-1 px-2 rounded-full hover:bg-gray-50/50"
                                 title="Collapse Player"
                             >
-                                <span>Hide</span>
                                 <ChevronDown size={12} strokeWidth={2.5} />
+                                <span>Hide</span>
                             </button>
                         </div>
 
