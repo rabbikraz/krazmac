@@ -368,7 +368,18 @@ export default function SourceManager() {
     }
 
     const updateSourceRotation = (id: string, rotation: number) => {
-        setSources(prev => prev.map(s => s.id === id ? { ...s, rotation, clippedImage: null } : s))
+        setSources(prev => prev.map(s => {
+            if (s.id !== id) return s
+
+            // Only clear the image (triggering re-clip) if we have the original page loaded
+            // Otherwise, keep the existing image and we'll rotate it visually/on-save
+            const hasPage = pages[s.pageIndex]
+            return {
+                ...s,
+                rotation,
+                clippedImage: hasPage ? null : s.clippedImage
+            }
+        }))
     }
 
     const updateSourceDisplaySize = (id: string, displaySize: number) => {
@@ -630,8 +641,17 @@ export default function SourceManager() {
                     ctx.font = 'bold 16px system-ui'
                     ctx.fillText(`${idx + 1}. ${source.name}`, 10, yOffset - 5)
 
-                    // Draw image
+                    // Draw image with rotation if needed
+                    ctx.save()
+                    if (source.rotation !== 0) {
+                        // Move to center of image area
+                        ctx.translate(imgWidth / 2, yOffset + h / 2)
+                        ctx.rotate((source.rotation * Math.PI) / 180)
+                        ctx.translate(-imgWidth / 2, -(yOffset + h / 2))
+                    }
                     ctx.drawImage(img, 0, yOffset, imgWidth, h)
+                    ctx.restore()
+
                     yOffset += h + 40
                 }
             })
@@ -1047,8 +1067,13 @@ export default function SourceManager() {
                                                     <img
                                                         src={source.clippedImage}
                                                         alt={source.name}
-                                                        style={{ width: `${source.displaySize}%`, maxWidth: '100%' }}
-                                                        className="border rounded shadow-sm"
+                                                        style={{
+                                                            width: `${source.displaySize}%`,
+                                                            maxWidth: '100%',
+                                                            // Apply visual rotation for legacy sources that weren't re-clipped
+                                                            transform: `rotate(${source.rotation}deg)`
+                                                        }}
+                                                        className="border rounded shadow-sm transition-transform"
                                                     />
                                                 </div>
                                             ) : (
