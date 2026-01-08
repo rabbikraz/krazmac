@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 // ============================================================================
 // TYPES
@@ -140,6 +141,9 @@ function clipSourceImage(source: Source, page: PageData): string | null {
 // ============================================================================
 
 export default function SourceManager() {
+    const searchParams = useSearchParams()
+    const urlShiurId = searchParams.get('id') || searchParams.get('shiurId')
+
     // Current File State (Visual Canvas)
     const [pages, setPages] = useState<PageData[]>([])
     const [currentPageIndex, setCurrentPageIndex] = useState(0)
@@ -172,7 +176,7 @@ export default function SourceManager() {
 
     // Shiur attachment
     const [shiurim, setShiurim] = useState<Shiur[]>([])
-    const [selectedShiurId, setSelectedShiurId] = useState<string | null>(null)
+    const [selectedShiurId, setSelectedShiurId] = useState<string | null>(urlShiurId)
     const [loadingShiurim, setLoadingShiurim] = useState(false)
 
     const canvasRef = useRef<HTMLDivElement>(null)
