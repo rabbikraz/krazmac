@@ -229,6 +229,11 @@ export default function SourceManager() {
     const [selectedShiurId, setSelectedShiurId] = useState<string | null>(urlShiurId)
     const [loadingShiurim, setLoadingShiurim] = useState(false)
 
+    // Identification / Search
+    const [identifyingId, setIdentifyingId] = useState<string | null>(null)
+    const [identifyResults, setIdentifyResults] = useState<Array<{ sourceName: string, sefariaRef: string, previewText: string }> | null>(null)
+    const [identifyTargetId, setIdentifyTargetId] = useState<string | null>(null)
+
     const canvasRef = useRef<HTMLDivElement>(null)
     const imageRef = useRef<HTMLImageElement>(null)
 
@@ -634,6 +639,63 @@ export default function SourceManager() {
     }
 
     const currentPageSources = sources.filter(s => s.pageIndex === currentPageIndex)
+
+    // ============================================================================
+    // IDENTIFY / SEARCH SOURCE
+    // ============================================================================
+
+    const handleIdentifySource = async (sourceId: string) => {
+        const source = sources.find(s => s.id === sourceId)
+        if (!source?.clippedImage) {
+            alert('No image to analyze. Please wait for the clip to generate.')
+            return
+        }
+
+        setIdentifyingId(sourceId)
+        setIdentifyTargetId(sourceId) // Track which source we are searching for
+
+        try {
+            // Fetch blob from data URL
+            const res = await fetch(source.clippedImage)
+            const blob = await res.blob()
+            const file = new File([blob], 'source.png', { type: 'image/png' })
+
+            const formData = new FormData()
+            formData.append('image', file)
+
+            const apiRes = await fetch('/api/sources/identify', { method: 'POST', body: formData })
+            const data = await apiRes.json() as { success: boolean, candidates: Array<{ sourceName: string, sefariaRef: string, previewText: string }> }
+
+            if (data.success && data.candidates?.length > 0) {
+                setIdentifyResults(data.candidates)
+            } else {
+                alert('No sources identified. Try adjusting the crop.')
+                setIdentifyResults(null)
+            }
+        } catch (e) {
+            console.error(e)
+            alert('Search failed: ' + String(e))
+        } finally {
+            setIdentifyingId(null)
+        }
+    }
+
+    const applyIdentification = (result: { sourceName: string, sefariaRef: string }) => {
+        if (!identifyTargetId) return
+
+        setSources(prev => prev.map(s => {
+            if (s.id !== identifyTargetId) return s
+            return {
+                ...s,
+                name: result.sourceName,
+                reference: result.sefariaRef
+            }
+        }))
+
+        // Close modal
+        setIdentifyResults(null)
+        setIdentifyTargetId(null)
+    }
 
     // ============================================================================
     // APPLY TO SHIUR
@@ -1112,6 +1174,33 @@ export default function SourceManager() {
                                                     </button>
                                                 </div>
 
+                                                {/* Search / Reference Bar */}
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => handleIdentifySource(source.id)}
+                                                        disabled={!!identifyingId}
+                                                        className="flex items-center gap-1.5 text-xs font-semibold bg-violet-100 text-violet-700 px-2 py-1.5 rounded hover:bg-violet-200 disabled:opacity-50 transition-colors"
+                                                    >
+                                                        {identifyingId === source.id ? (
+                                                            <>
+                                                                <span className="animate-spin">⏳</span> Searching...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <span>🔍</span> Identify Source
+                                                            </>
+                                                        )}
+                                                    </button>
+
+                                                    {source.reference ? (
+                                                        <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded border text-slate-600 truncate flex-1 block">
+                                                            {source.reference}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400 italic">No reference set</span>
+                                                    )}
+                                                </div>
+
                                                 {/* Row 2: Rotation Slider + Input */}
                                                 <div className="flex items-center gap-3 pl-10">
                                                     <span className="text-xs text-slate-500 whitespace-nowrap w-16">Rotation:</span>
@@ -1207,6 +1296,40 @@ export default function SourceManager() {
                     </div>
                 )}
             </div>
+            {/* IDENTIFY MODAL */}
+            {identifyResults && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col overflow-hidden">
+                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
+                            <h3 className="font-bold text-lg">Select Search Result</h3>
+                            <button onClick={() => setIdentifyResults(null)} className="text-slate-400 hover:text-slate-600">×</button>
+                        </div>
+                        <div className="p-4 overflow-y-auto space-y-3">
+                            {identifyResults.map((result, idx) => (
+                                <div
+                                    key={idx}
+                                    onClick={() => applyIdentification(result)}
+                                    className="border rounded-lg p-3 hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all group"
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="font-bold text-slate-800">{result.sourceName}</div>
+                                        <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border">{result.sefariaRef}</span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 line-clamp-2 font-serif bg-slate-50 p-2 rounded" dir="rtl">
+                                        {result.previewText}
+                                    </p>
+                                    <div className="mt-2 text-xs text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Click to apply
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-3 border-t bg-slate-50 text-right">
+                            <button onClick={() => setIdentifyResults(null)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
