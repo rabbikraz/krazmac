@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
             throw new Error(`Vision API Failed: ${visionRes.status} ${visionRes.statusText}`)
         }
 
-        const visionData = await visionRes.json()
+        const visionData = await visionRes.json() as any
         const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text
 
         if (!fullText) {
