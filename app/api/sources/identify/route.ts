@@ -51,14 +51,26 @@ export async function POST(request: NextRequest) {
         console.log(`OCR Complete. Found ${fullText.length} chars.`)
 
         // 3. Clean up text for Sefaria Search
-        // Take first ~150 chars, cleaning up extra whitespace
-        const cleanText = fullText.replace(/\s+/g, ' ').trim()
-        const searchQuery = cleanText.substring(0, 150)
+        // Strategy: 
+        // 1. Remove Nikkud (vowels) if present, as it messes up search
+        // 2. Remove common garbage characters
+        // 3. Take a solid chunk of text (5-15 words) from the MIDDLE if possible to avoid headers
 
-        console.log(`Searching Sefaria for: "${searchQuery.substring(0, 50)}..."`)
+        let cleanText = fullText.replace(/[\u0591-\u05C7]/g, '') // Remove Nikkud
+            .replace(/[^\u05D0-\u05EA\s]/g, ' ') // Keep only Hebrew letters and spaces
+            .replace(/\s+/g, ' ')
+            .trim()
+
+        // If text is very long, try to skip the first few words which might be headers (e.g. "Chapter 1")
+        const words = cleanText.split(' ')
+        const startIndex = words.length > 20 ? 5 : 0
+        const searchQuery = words.slice(startIndex, startIndex + 15).join(' ') // Search 15 words
+
+        console.log(`Searching Sefaria for: "${searchQuery}"`)
 
         // 4. Search Sefaria
-        const sefariaUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(searchQuery)}&index_type=text&size=5`
+        // Use 'text' index type for body searches
+        const sefariaUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(searchQuery)}&index_type=text&size=10`
 
         const searchRes = await fetch(sefariaUrl)
         if (!searchRes.ok) {
