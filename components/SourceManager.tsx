@@ -685,9 +685,17 @@ export default function SourceManager() {
         const shiur = shiurim.find(s => s.id === selectedShiurId)
         if (shiur?.sourcesJson) {
             try {
-                const loaded = JSON.parse(shiur.sourcesJson) as Source[]
+                const loaded = JSON.parse(shiur.sourcesJson) as any[]
                 if (Array.isArray(loaded)) {
-                    setSources(loaded)
+                    // Map 'image' (saved format) to 'clippedImage' (internal state format)
+                    const mappedSources = loaded.map(s => ({
+                        ...s,
+                        clippedImage: s.image || s.clippedImage,
+                        // Ensure other required fields exist
+                        displaySize: s.displaySize || 75,
+                        rotation: s.rotation || 0
+                    }))
+                    setSources(mappedSources)
                     // If we have sources but no pages, go to Preview mode so user can see/edit the list
                     // They can then click "Add PDF" to upload a document
                     if (pages.length === 0) {
