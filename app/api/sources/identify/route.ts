@@ -79,7 +79,6 @@ Return your best guess even if unsure.`
                     const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
                     console.log('Gemini response:', responseText.substring(0, 200))
 
-                    // Parse JSON
                     try {
                         let jsonStr = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
                         const match = jsonStr.match(/\{[\s\S]*\}/)
@@ -107,18 +106,16 @@ Return your best guess even if unsure.`
             }
         }
 
-        // If Gemini found results, return them
         if (candidates.length > 0) {
             return NextResponse.json({ success: true, candidates })
         }
 
         // ============================================
-        // STRATEGY 2: Fall back to OCR + Sefaria Search
+        // STRATEGY 2: Fall back to OCR + Sefaria v3 API
         // ============================================
 
         console.log('Falling back to OCR + Sefaria...')
 
-        // OCR with Vision API
         const visionRes = await fetch(
             `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_CLOUD_API_KEY}`,
             {
@@ -144,7 +141,7 @@ Return your best guess even if unsure.`
             return NextResponse.json({ success: false, error: 'No text detected' })
         }
 
-        // Clean and search
+        // Clean text
         const cleanText = fullText
             .replace(/[\u0591-\u05C7]/g, '')
             .replace(/[^\u05D0-\u05EA\s]/g, ' ')
@@ -152,36 +149,53 @@ Return your best guess even if unsure.`
             .trim()
 
         const words = cleanText.split(' ').filter((w: string) => w.length > 1)
-        const searchPhrase = words.slice(0, 12).join(' ')
+        const searchPhrase = words.slice(0, 15).join(' ')
 
-        console.log('Searching Sefaria for:', searchPhrase)
+        console.log('OCR text:', searchPhrase)
 
-        // Search Sefaria
+        // Use Sefaria's ElasticSearch API directly
         try {
-            const sefariaUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(searchPhrase)}&type=text&size=5`
-            const sefariaRes = await fetch(sefariaUrl, { signal: AbortSignal.timeout(10000) })
+            const searchBody = {
+                query: {
+                    match_phrase: {
+                        naive_lemmatizer: searchPhrase
+                    }
+                },
+                size: 5,
+                _source: ['ref', 'he', 'text']
+            }
+
+            const sefariaRes = await fetch('https://www.sefaria.org/api/search/text/_search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(searchBody),
+                signal: AbortSignal.timeout(10000)
+            })
 
             if (sefariaRes.ok) {
-                const sefariaData = await sefariaRes.json() as any
-                const hits = sefariaData.hits?.hits || []
+                const data = await sefariaRes.json() as any
+                const hits = data.hits?.hits || []
 
                 for (const hit of hits) {
-                    const source = hit._source || hit
-                    if (source.ref) {
+                    const source = hit._source
+                    if (source?.ref) {
                         candidates.push({
                             sourceName: source.ref,
                             sefariaRef: source.ref,
-                            previewText: (source.he || '').substring(0, 100),
-                            source: 'Sefaria Search'
+                            previewText: (source.he || source.text || '').substring(0, 100),
+                            source: 'Sefaria'
                         })
                     }
                 }
+                console.log('Sefaria found:', candidates.length)
+            } else {
+                console.log('Sefaria search failed:', sefariaRes.status)
             }
         } catch (e) {
             console.error('Sefaria error:', e)
         }
 
-        // Return whatever we found
+        // If still nothing, return OCR text
         if (candidates.length === 0) {
             candidates.push({
                 sourceName: 'OCR Text (no match)',
