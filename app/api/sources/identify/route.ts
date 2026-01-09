@@ -142,12 +142,26 @@ export async function POST(request: NextRequest) {
 
         debugLog.push(`Search query: ${searchQuery}`)
 
-        // Try Sefaria simple search wrapper first (more reliable)
+        // Use Sefaria's ElasticSearch API directly (POST with JSON body)
         try {
-            const simpleUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(searchQuery)}&type=text&size=5`
-            debugLog.push(`Calling: ${simpleUrl}`)
+            const searchBody = {
+                size: 10,
+                query: {
+                    match_phrase: {
+                        naive_lemmatizer: {
+                            query: searchQuery,
+                            slop: 5
+                        }
+                    }
+                }
+            }
 
-            const sefariaRes = await fetch(simpleUrl, {
+            debugLog.push(`Calling ElasticSearch API...`)
+
+            const sefariaRes = await fetch('https://www.sefaria.org/api/search/text/_search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(searchBody),
                 signal: AbortSignal.timeout(15000)
             })
 
@@ -155,27 +169,25 @@ export async function POST(request: NextRequest) {
 
             if (sefariaRes.ok) {
                 const data = await sefariaRes.json() as any
-                debugLog.push(`Sefaria response keys: ${Object.keys(data).join(', ')}`)
+                debugLog.push(`Response keys: ${Object.keys(data).join(', ')}`)
 
-                const hits = data.hits?.hits || data || []
-                debugLog.push(`Hits count: ${Array.isArray(hits) ? hits.length : 'not array'}`)
+                const hits = data.hits?.hits || []
+                debugLog.push(`Hits found: ${hits.length}`)
 
-                if (Array.isArray(hits)) {
-                    for (const hit of hits.slice(0, 5)) {
-                        const source = hit._source || hit
-                        if (source?.ref) {
-                            candidates.push({
-                                sourceName: source.ref,
-                                sefariaRef: source.ref,
-                                previewText: (source.he || '').substring(0, 100),
-                                source: 'Sefaria'
-                            })
-                        }
+                for (const hit of hits.slice(0, 5)) {
+                    const source = hit._source
+                    if (source?.ref) {
+                        candidates.push({
+                            sourceName: source.ref,
+                            sefariaRef: source.ref,
+                            previewText: (source.he || source.text || '').substring(0, 100),
+                            source: 'Sefaria'
+                        })
                     }
                 }
             } else {
                 const errText = await sefariaRes.text()
-                debugLog.push(`Sefaria error: ${errText.substring(0, 100)}`)
+                debugLog.push(`Sefaria error: ${errText.substring(0, 200)}`)
             }
         } catch (e) {
             debugLog.push(`Sefaria fetch error: ${e}`)
