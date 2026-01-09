@@ -34,122 +34,107 @@ export async function POST(request: NextRequest) {
         const candidates: Array<{ sourceName: string, sefariaRef: string, previewText: string, source?: string }> = []
 
         // ============================================
-        // STRATEGY 1: Try Gemini (SAME MODEL AS ANALYZE)
+        // Try multiple Gemini models until one works
         // ============================================
 
+        const models = [
+            'gemini-1.5-flash',      // Higher free tier limits
+            'gemini-2.0-flash-exp',  // Experimental  
+            'gemini-1.5-pro'         // Pro model
+        ]
+
         if (GEMINI_API_KEY) {
-            debugLog.push('Trying Gemini 2.0 Flash Exp...')
-            try {
-                // Use EXACT same endpoint as working analyze route
-                const geminiResponse = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{
-                                parts: [
-                                    {
-                                        text: `Look at this Hebrew/Aramaic Torah text image and identify the source.
+            for (const model of models) {
+                if (candidates.length > 0) break // Already found results
 
-Analyze the text content and identify which Jewish text this is from. Consider:
-- Talmud (Bavli/Yerushalmi)
-- Mishnah
-- Torah commentaries (Rashi, Tosafot, Ramban, etc.)
-- Shulchan Aruch and commentaries
-- Midrash
-- Other Jewish texts
+                debugLog.push(`Trying ${model}...`)
+                try {
+                    const geminiResponse = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{
+                                    parts: [
+                                        {
+                                            text: `Identify this Hebrew/Aramaic Torah source. Return ONLY JSON:
+{"candidates":[{"sourceName":"Name","sefariaRef":"Ref like Berakhot 55a","previewText":"First words"}]}
 
-Return ONLY a JSON object with your best identification:
-{"candidates":[{"sourceName":"Full readable name","sefariaRef":"Sefaria format ref","previewText":"First few words"}]}
-
-Examples of sefariaRef format:
-- "Berakhot 55a" (Talmud)
-- "Rashi on Genesis 1:1" (Commentary)
-- "Mishneh Torah, Sabbath 1:1" (Rambam)
-- "Shulchan Arukh, Orach Chayim 1:1"
-
-Give your best guess even if uncertain.`
-                                    },
-                                    {
-                                        inlineData: {
-                                            mimeType,
-                                            data: base64
+Examples: "Berakhot 55a", "Rashi on Genesis 1:1", "Shulchan Arukh, Orach Chayim 1:1"`
+                                        },
+                                        {
+                                            inlineData: { mimeType, data: base64 }
                                         }
-                                    }
-                                ]
-                            }],
-                            generationConfig: {
-                                temperature: 0.1,
-                                maxOutputTokens: 2048
-                            }
-                        })
-                    }
-                )
-
-                debugLog.push(`Gemini status: ${geminiResponse.status}`)
-
-                if (geminiResponse.ok) {
-                    const geminiData: GeminiResponse = await geminiResponse.json()
-                    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
-                    debugLog.push(`Gemini response: ${responseText.substring(0, 150)}`)
-
-                    try {
-                        // Extract JSON from response
-                        let jsonStr = responseText
-                        const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/)
-                        if (jsonMatch) {
-                            jsonStr = jsonMatch[1]
-                        } else {
-                            const plainMatch = responseText.match(/\{[\s\S]*\}/)
-                            if (plainMatch) {
-                                jsonStr = plainMatch[0]
-                            }
+                                    ]
+                                }],
+                                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+                            })
                         }
+                    )
 
-                        const result = JSON.parse(jsonStr)
-                        if (result.candidates?.length > 0) {
-                            for (const c of result.candidates) {
-                                candidates.push({
-                                    sourceName: c.sourceName || c.sefariaRef || 'Unknown',
-                                    sefariaRef: c.sefariaRef || '',
-                                    previewText: c.previewText || '',
-                                    source: 'Gemini AI'
-                                })
-                            }
-                            debugLog.push(`Gemini found ${candidates.length} candidates`)
-                        }
-                    } catch (e) {
-                        debugLog.push(`Gemini parse error: ${e}`)
+                    debugLog.push(`${model}: ${geminiResponse.status}`)
+
+                    if (geminiResponse.status === 429) {
+                        debugLog.push(`${model} rate limited, trying next...`)
+                        continue // Try next model
                     }
-                } else {
-                    const errText = await geminiResponse.text()
-                    debugLog.push(`Gemini error: ${errText.substring(0, 200)}`)
+
+                    if (geminiResponse.ok) {
+                        const geminiData: GeminiResponse = await geminiResponse.json()
+                        const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+                        debugLog.push(`Response: ${responseText.substring(0, 100)}`)
+
+                        try {
+                            let jsonStr = responseText
+                            const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/)
+                            if (jsonMatch) {
+                                jsonStr = jsonMatch[1]
+                            } else {
+                                const plainMatch = responseText.match(/\{[\s\S]*\}/)
+                                if (plainMatch) jsonStr = plainMatch[0]
+                            }
+
+                            const result = JSON.parse(jsonStr)
+                            if (result.candidates?.length > 0) {
+                                for (const c of result.candidates) {
+                                    candidates.push({
+                                        sourceName: c.sourceName || c.sefariaRef || 'Unknown',
+                                        sefariaRef: c.sefariaRef || '',
+                                        previewText: c.previewText || '',
+                                        source: `Gemini (${model})`
+                                    })
+                                }
+                                debugLog.push(`Found ${candidates.length} candidates`)
+                            }
+                        } catch (e) {
+                            debugLog.push(`Parse error: ${e}`)
+                        }
+                    } else {
+                        const errText = await geminiResponse.text()
+                        debugLog.push(`Error: ${errText.substring(0, 100)}`)
+                    }
+                } catch (e) {
+                    debugLog.push(`Fetch error: ${e}`)
                 }
-            } catch (e) {
-                debugLog.push(`Gemini fetch error: ${e}`)
             }
         } else {
-            debugLog.push('No GEMINI_API_KEY configured')
+            debugLog.push('No GEMINI_API_KEY')
         }
 
         if (candidates.length > 0) {
             return NextResponse.json({ success: true, candidates, debug: debugLog })
         }
 
-        // ============================================
-        // STRATEGY 2: Return with debug info
-        // ============================================
-
         return NextResponse.json({
             success: false,
-            error: 'Could not identify source',
+            error: 'Could not identify source (all models failed or rate limited)',
             candidates: [],
             debug: debugLog
         })
 
     } catch (error) {
-        debugLog.push(`Fatal error: ${error}`)
+        debugLog.push(`Fatal: ${error}`)
         return NextResponse.json({ success: false, error: String(error), debug: debugLog })
     }
 }
