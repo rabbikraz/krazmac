@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Use Google Vision REST API
 const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY || 'AIzaSyAXKKKN7H5WmZjQXipg7ghBQHkIxhVyWN0'
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
+
+interface GeminiResponse {
+    candidates?: Array<{
+        content?: {
+            parts?: Array<{
+                text?: string
+            }>
+        }
+    }>
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -12,13 +22,103 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'No image provided' })
         }
 
-        console.log('--- Step 1: OCR with Google Vision ---')
-
         // Convert to base64
         const arrayBuffer = await imageFile.arrayBuffer()
         const base64 = Buffer.from(arrayBuffer).toString('base64')
+        const mimeType = imageFile.type || 'image/png'
 
-        // Call Google Vision REST API
+        const candidates: Array<{ sourceName: string, sefariaRef: string, previewText: string, source?: string }> = []
+
+        // ============================================
+        // STRATEGY 1: Try Gemini first (it knows sources)
+        // ============================================
+
+        if (GEMINI_API_KEY) {
+            try {
+                console.log('Trying Gemini identification...')
+                const geminiResponse = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [
+                                    {
+                                        text: `Look at this Hebrew/Aramaic text image. Identify the Torah source.
+
+Return JSON only:
+{"candidates":[{"sourceName":"Full name","sefariaRef":"Sefaria ref","previewText":"First words"}]}
+
+Examples of sefariaRef format:
+- "Berakhot 2a" 
+- "Rashi on Genesis 1:1"
+- "Mishneh Torah, Sabbath 1:1"
+- "Shulchan Arukh, Orach Chayim 1:1"
+
+Return your best guess even if unsure.`
+                                    },
+                                    {
+                                        inlineData: {
+                                            mimeType,
+                                            data: base64
+                                        }
+                                    }
+                                ]
+                            }],
+                            generationConfig: {
+                                temperature: 0.1,
+                                maxOutputTokens: 1024
+                            }
+                        })
+                    }
+                )
+
+                if (geminiResponse.ok) {
+                    const geminiData: GeminiResponse = await geminiResponse.json()
+                    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
+                    console.log('Gemini response:', responseText.substring(0, 200))
+
+                    // Parse JSON
+                    try {
+                        let jsonStr = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+                        const match = jsonStr.match(/\{[\s\S]*\}/)
+                        if (match) {
+                            const result = JSON.parse(match[0])
+                            if (result.candidates?.length > 0) {
+                                for (const c of result.candidates) {
+                                    candidates.push({
+                                        sourceName: c.sourceName || c.sefariaRef,
+                                        sefariaRef: c.sefariaRef || '',
+                                        previewText: c.previewText || '',
+                                        source: 'Gemini AI'
+                                    })
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Gemini parse error:', e)
+                    }
+                } else {
+                    console.log('Gemini returned:', geminiResponse.status)
+                }
+            } catch (e) {
+                console.error('Gemini error:', e)
+            }
+        }
+
+        // If Gemini found results, return them
+        if (candidates.length > 0) {
+            return NextResponse.json({ success: true, candidates })
+        }
+
+        // ============================================
+        // STRATEGY 2: Fall back to OCR + Sefaria Search
+        // ============================================
+
+        console.log('Falling back to OCR + Sefaria...')
+
+        // OCR with Vision API
         const visionRes = await fetch(
             `https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_CLOUD_API_KEY}`,
             {
@@ -34,178 +134,71 @@ export async function POST(request: NextRequest) {
         )
 
         if (!visionRes.ok) {
-            const errorText = await visionRes.text()
-            console.error('Vision API Error:', errorText)
-            return NextResponse.json({
-                success: false,
-                error: `Vision API Error: ${visionRes.status}`
-            })
+            return NextResponse.json({ success: false, error: `Vision API Error: ${visionRes.status}` })
         }
 
         const visionData = await visionRes.json() as any
         const fullText = visionData.responses?.[0]?.fullTextAnnotation?.text
 
         if (!fullText) {
-            return NextResponse.json({
-                success: false,
-                error: 'No text detected in image'
-            })
+            return NextResponse.json({ success: false, error: 'No text detected' })
         }
 
-        console.log(`OCR found ${fullText.length} chars`)
-
-        // ============================================
-        // Step 2: Clean OCR text - keep more characters
-        // ============================================
-
-        // Remove nikkud but keep more text
-        let cleanText = fullText
-            .replace(/[\u0591-\u05C7]/g, '') // Remove nikkud/taamim only
-            .replace(/\s+/g, ' ')
-            .trim()
-
-        // Get ALL Hebrew words
-        const hebrewOnly = cleanText
+        // Clean and search
+        const cleanText = fullText
+            .replace(/[\u0591-\u05C7]/g, '')
             .replace(/[^\u05D0-\u05EA\s]/g, ' ')
             .replace(/\s+/g, ' ')
             .trim()
 
-        const words = hebrewOnly.split(' ').filter((w: string) => w.length > 1)
+        const words = cleanText.split(' ').filter((w: string) => w.length > 1)
+        const searchPhrase = words.slice(0, 12).join(' ')
 
-        // Use a larger chunk - 25 words for better matching
-        const searchPhrase = words.slice(0, 25).join(' ')
-        // Also create a shorter exact phrase for precise matching
-        const exactPhrase = words.slice(0, 8).join(' ')
+        console.log('Searching Sefaria for:', searchPhrase)
 
-        console.log(`Full phrase (25 words): "${searchPhrase}"`)
-        console.log(`Exact phrase (8 words): "${exactPhrase}"`)
-
-        const candidates: Array<{ sourceName: string, sefariaRef: string, previewText: string, source?: string }> = []
-
-        // ============================================
-        // Step 3: Search Sefaria with EXACT phrase first
-        // ============================================
-
+        // Search Sefaria
         try {
-            // Search with the shorter phrase first (more distinctive)
-            const sefariaUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(exactPhrase)}&type=text&size=8`
-            console.log('Searching Sefaria (exact)...')
-            const sefariaRes = await fetch(sefariaUrl, { signal: AbortSignal.timeout(8000) })
+            const sefariaUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(searchPhrase)}&type=text&size=5`
+            const sefariaRes = await fetch(sefariaUrl, { signal: AbortSignal.timeout(10000) })
 
             if (sefariaRes.ok) {
                 const sefariaData = await sefariaRes.json() as any
-                const hits = sefariaData.hits?.hits || sefariaData || []
+                const hits = sefariaData.hits?.hits || []
 
-                for (const hit of hits.slice(0, 3)) {
+                for (const hit of hits) {
                     const source = hit._source || hit
                     if (source.ref) {
                         candidates.push({
                             sourceName: source.ref,
                             sefariaRef: source.ref,
-                            previewText: (source.he || source.text || '').substring(0, 150),
-                            source: 'Sefaria (exact match)'
-                        })
-                    }
-                }
-                console.log(`Sefaria exact found ${candidates.length} results`)
-            }
-        } catch (e) {
-            console.error('Sefaria exact search error:', e)
-        }
-
-        // ============================================
-        // Step 4: If no exact match, try broader search
-        // ============================================
-
-        if (candidates.length === 0) {
-            try {
-                const sefariaUrl = `https://www.sefaria.org/api/search-wrapper?q=${encodeURIComponent(searchPhrase)}&type=text&size=8`
-                console.log('Searching Sefaria (broad)...')
-                const sefariaRes = await fetch(sefariaUrl, { signal: AbortSignal.timeout(8000) })
-
-                if (sefariaRes.ok) {
-                    const sefariaData = await sefariaRes.json() as any
-                    const hits = sefariaData.hits?.hits || sefariaData || []
-
-                    for (const hit of hits.slice(0, 5)) {
-                        const source = hit._source || hit
-                        if (source.ref) {
-                            candidates.push({
-                                sourceName: source.ref,
-                                sefariaRef: source.ref,
-                                previewText: (source.he || source.text || '').substring(0, 150),
-                                source: 'Sefaria'
-                            })
-                        }
-                    }
-                    console.log(`Sefaria broad found ${candidates.length} results`)
-                }
-            } catch (e) {
-                console.error('Sefaria broad search error:', e)
-            }
-        }
-
-        // ============================================
-        // Step 5: Search HebrewBooks
-        // ============================================
-
-        try {
-            const hbUrl = `https://hebrewbooks.org/ajax.ashx?type=search&val=${encodeURIComponent(exactPhrase)}`
-            console.log('Searching HebrewBooks...')
-            const hbRes = await fetch(hbUrl, {
-                signal: AbortSignal.timeout(5000),
-                headers: { 'Accept': 'application/json' }
-            })
-
-            if (hbRes.ok) {
-                const hbText = await hbRes.text()
-                const bookMatches = hbText.match(/hebrewbooks\.org\/\d+/g)
-                if (bookMatches) {
-                    for (const match of bookMatches.slice(0, 2)) {
-                        const bookId = match.split('/')[1]
-                        candidates.push({
-                            sourceName: `HebrewBooks #${bookId}`,
-                            sefariaRef: '',
-                            previewText: `https://${match}`,
-                            source: 'HebrewBooks'
+                            previewText: (source.he || '').substring(0, 100),
+                            source: 'Sefaria Search'
                         })
                     }
                 }
             }
         } catch (e) {
-            console.error('HebrewBooks search error:', e)
+            console.error('Sefaria error:', e)
         }
 
-        // ============================================
-        // Return results with OCR text for debugging
-        // ============================================
-
+        // Return whatever we found
         if (candidates.length === 0) {
-            return NextResponse.json({
-                success: true,
-                candidates: [{
-                    sourceName: 'No match found',
-                    sefariaRef: '',
-                    previewText: hebrewOnly.substring(0, 200),
-                    source: 'OCR Only'
-                }],
-                ocrText: hebrewOnly,
-                searchQuery: searchPhrase
+            candidates.push({
+                sourceName: 'OCR Text (no match)',
+                sefariaRef: '',
+                previewText: cleanText.substring(0, 150),
+                source: 'OCR Only'
             })
         }
 
         return NextResponse.json({
             success: true,
             candidates,
-            ocrText: hebrewOnly.substring(0, 200),
-            searchQuery: searchPhrase
+            ocrText: cleanText.substring(0, 100)
         })
 
     } catch (error) {
-        console.error('Identification Error:', error)
-        return NextResponse.json({
-            success: false,
-            error: String(error)
-        })
+        console.error('Error:', error)
+        return NextResponse.json({ success: false, error: String(error) })
     }
 }
