@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
             .trim()
 
         // Take a good search phrase (skip first few words which might be headers)
-        const words = cleanText.split(' ').filter(w => w.length > 1)
+        const words = cleanText.split(' ').filter((w: string) => w.length > 1)
         const startIdx = words.length > 15 ? 3 : 0
         const searchPhrase = words.slice(startIdx, startIdx + 10).join(' ')
 
