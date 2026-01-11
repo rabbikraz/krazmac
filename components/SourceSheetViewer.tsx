@@ -246,6 +246,19 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                {/* View on Sefaria Link */}
+                                                {source.reference && (
+                                                    <a
+                                                        href={`https://www.sefaria.org/${source.reference.replace(/ /g, '_')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-2 mt-3 text-sm text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200 transition-colors"
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                        View on Sefaria
+                                                    </a>
+                                                )}
                                             </div>
                                         )}
                                     </div>
