@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Multiple API keys to try - different keys may have access to different models
+// Fallback API key if env not set in Cloudflare
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAEXa4oYvoHXYUqRq-8UTEOUd9mQd-Va8I'
-const GEMINI_API_KEY_ALT = 'AIzaSyBUxKm7aHk1erGj3CPL-Xab8UXSZAWe5IU'  // From parse-text route
+// Alternative key from parse-text route
+const GEMINI_API_KEY_ALT = 'AIzaSyBUxKm7aHk1erGj3CPL-Xab8UXSZAWe5IU'
 const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY || 'AIzaSyAXKKKN7H5WmZjQXipg7ghBQHkIxhVyWN0'
 
 interface GeminiResponse {
@@ -36,14 +37,14 @@ export async function POST(request: NextRequest) {
         const candidates: Array<{ sourceName: string, sefariaRef: string, previewText: string, source?: string }> = []
 
         // ============================================
-        // STRATEGY 1: Try Gemini models (correct names)
+        // STRATEGY 1: Try Gemini models
         // ============================================
 
-        // Official model names from Google docs + API keys to try
+        // Added gemini-2.5-flash based on your availabilty check
         const models = [
-            'gemini-2.0-flash',       // Latest stable 2.0
-            'gemini-2.0-flash-001',   // Stable version  
+            'gemini-2.5-flash',       // Newest stable
             'gemini-2.0-flash-exp',   // Experimental
+            'gemini-flash-latest',    // Fallback alias
         ]
 
         const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_ALT]
@@ -79,7 +80,8 @@ Examples: "Berakhot 55a", "Rashi on Genesis 1:1"`
 
                     debugLog.push(`${model}: ${geminiResponse.status}`)
 
-                    if (geminiResponse.status === 429 || geminiResponse.status === 404) {
+                    // 403: Forbidden (key doesn't have access to model), 404: Not Found, 429: Rate Limit
+                    if ([403, 404, 429].includes(geminiResponse.status)) {
                         continue
                     }
 
@@ -97,7 +99,7 @@ Examples: "Berakhot 55a", "Rashi on Genesis 1:1"`
                                             sourceName: c.sourceName || c.sefariaRef || 'Unknown',
                                             sefariaRef: c.sefariaRef || '',
                                             previewText: c.previewText || '',
-                                            source: `Gemini`
+                                            source: `Gemini (${model})`
                                         })
                                     }
                                     debugLog.push(`Gemini found ${candidates.length} candidates`)
@@ -166,10 +168,9 @@ Examples: "Berakhot 55a", "Rashi on Genesis 1:1"`
             .replace(/\s+/g, ' ')
             .trim()
 
-        // Step 2: Call Sefaria find-refs API (POST with JSON)
         // Step 2: Try Sefaria APIs
 
-        // Strategy A: Try find-refs with correct body format
+        // Strategy A: Try find-refs with correct body format AND POLLING
         try {
             debugLog.push('Trying Sefaria find-refs...')
 
@@ -178,7 +179,7 @@ Examples: "Berakhot 55a", "Rashi on Genesis 1:1"`
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text: {
-                        body: cleanText.substring(0, 1000),
+                        body: cleanText.substring(0, 500), // Reduce length for faster processing
                         title: ''
                     },
                     lang: 'he'
@@ -190,11 +191,40 @@ Examples: "Berakhot 55a", "Rashi on Genesis 1:1"`
 
             if (sefariaRes.ok) {
                 const data = await sefariaRes.json() as any
-                debugLog.push(`Keys: ${Object.keys(data).join(', ')}`)
 
                 // Handle async response - might return task_id
                 if (data.task_id) {
-                    debugLog.push('Async task, skipping...')
+                    debugLog.push(`Async id: ${data.task_id}, polling...`)
+
+                    // Poll for results (max 5 attempts, 1s apart)
+                    for (let i = 0; i < 5; i++) {
+                        await new Promise(r => setTimeout(r, 1000))
+
+                        const statusRes = await fetch(`https://www.sefaria.org/api/async/${data.task_id}`)
+                        if (statusRes.ok) {
+                            const statusData = await statusRes.json() as any
+                            if (statusData.state === 'SUCCESS' && statusData.result) {
+                                debugLog.push('Async task SUCCESS!')
+                                const results = statusData.result.ref_data || statusData.result.refs || []
+                                if (results.length > 0) {
+                                    for (const item of results.slice(0, 5)) {
+                                        const ref = typeof item === 'string' ? item : (item.ref || '')
+                                        if (ref) {
+                                            candidates.push({
+                                                sourceName: ref.replace(/_/g, ' '),
+                                                sefariaRef: ref,
+                                                previewText: cleanText.substring(0, 80),
+                                                source: 'Sefaria'
+                                            })
+                                        }
+                                    }
+                                    break // Found results, stop polling
+                                }
+                            } else {
+                                debugLog.push(`Poll ${i + 1}: ${statusData.state}`)
+                            }
+                        }
+                    }
                 } else {
                     const refs = data.ref_data || data.refs || data.results || []
                     if (Array.isArray(refs) && refs.length > 0) {
