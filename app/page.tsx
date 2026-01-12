@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Play } from 'lucide-react'
 import { ClientPlayButton } from '@/components/ClientPlayButton'
+import Header from '@/components/Header'
 
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
@@ -79,7 +80,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Featured / Hero Section */}
+      <Header />
       <section className="relative h-[80vh] min-h-[600px] flex items-center justify-center overflow-hidden">
         {/* Abstract Background */}
         <div className="absolute inset-0 bg-background">
