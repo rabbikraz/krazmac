@@ -94,7 +94,10 @@ export default async function Home() {
                 <p className="text-primary font-medium mb-2">Latest Episode</p>
                 <h3 className="text-3xl font-serif font-bold text-white mb-2">Faith in Uncertainty</h3>
                 <p className="text-gray-300 text-sm mb-6 line-clamp-2">How to maintain composure when the path ahead is unclear.</p>
-                <ClientPlayButton shiur={latestShiurim[0]} />
+                <Button className="w-full gap-2 font-semibold">
+                  <Play className="h-4 w-4" fill="currentColor" />
+                  Play Episode
+                </Button>
               </div>
             </Card>
           </div>
