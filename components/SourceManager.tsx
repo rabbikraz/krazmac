@@ -41,30 +41,9 @@ type DrawMode = 'rectangle' | 'polygon'
 // ============================================================================
 
 async function convertPdfToImages(file: File): Promise<PageData[]> {
-    const pdfjs = await import('pdfjs-dist')
-    const pdfjsLib = pdfjs.default || pdfjs
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-
-    const arrayBuffer = await file.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-    const pages: PageData[] = []
-
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum)
-        const scale = 2
-        const viewport = page.getViewport({ scale })
-        const canvas = document.createElement('canvas')
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-        const ctx = canvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, viewport } as any).promise
-        const dataUrl = canvas.toDataURL('image/png')
-        const img = new Image()
-        img.src = dataUrl
-        await new Promise(resolve => { img.onload = resolve })
-        pages.push({ imageDataUrl: dataUrl, width: viewport.width, height: viewport.height, imageElement: img })
-    }
-    return pages
+    console.warn('PDF conversion is currently disabled on Cloudflare Workers edge environment.')
+    alert('PDF Support is temporarily unavailable on the edge network. Please convert to images locally first.')
+    return []
 }
 
 async function convertImageToDataUrl(file: File): Promise<PageData> {
