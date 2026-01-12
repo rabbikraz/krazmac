@@ -1,5 +1,3 @@
-// import { drizzle } from 'drizzle-orm/d1'
-import type { DrizzleD1Database } from 'drizzle-orm/d1' // Try importing TYPE only
 import * as schema from './schema'
 
 // Type for Cloudflare Workers environment
@@ -16,37 +14,53 @@ const globalForDb = globalThis as unknown as {
 }
 
 /**
- * Get database client
- * SAFE VERSION: Does not import drizzle-orm/d1 at runtime to prevent crashes.
- * Will throw error if called until we fix the import issue.
+ * Get database client (ASYNC)
+ * Safe version that imports drizzle-orm/d1 dynamically to avoid top-level crashes.
  */
-export function getDb(d1Database: D1Database) {
+export async function getDb(d1Database: D1Database) {
     if (process.env.NODE_ENV !== 'production' && globalForDb.db) {
         return globalForDb.db
     }
 
-    // Dynamic import workaround needed for Cloudflare Workers?
-    // For now, this is a placeholder to prevent crash.
-    console.warn('getDb called - returning dummy or crashing safely')
+    try {
+        // Dynamic import needed for Cloudflare Workers to avoid top-level module crash
+        const { drizzle } = await import('drizzle-orm/d1');
+        const db = drizzle(d1Database, { schema });
 
-    // We cannot use drizzle() here without importing it.
-    // If we need real DB, we need to fix the import.
-    throw new Error("Database connection temporarily disabled for debugging")
+        if (process.env.NODE_ENV !== 'production') {
+            globalForDb.db = db
+        }
 
-    // const db = drizzle(d1Database, { schema })
-    // return db
+        return db;
+    } catch (e: any) {
+        console.error("Failed to initialize Drizzle:", e);
+        throw new Error(`Database initialization failed: ${e.message}`);
+    }
 }
 
 /**
  * Get D1 database from Cloudflare context
  */
 export async function getD1Database(): Promise<D1Database | null> {
-    // Return null to force mock data usage everywhere
-    console.warn('getD1Database disabled')
+    try {
+        // Try OpenNext's getCloudflareContext
+        const { getCloudflareContext } = await import('@opennextjs/cloudflare')
+        const ctx = await getCloudflareContext()
+        const env = ctx?.env as any
+        if (env?.DB) {
+            return env.DB as D1Database
+        }
+    } catch (e) {
+        // Fallback or ignore
+    }
+
+    // Fallback to globalThis (dev/preview)
+    if ((globalThis as any).DB) {
+        return (globalThis as any).DB
+    }
+
     return null
 }
 
-export type Database = any // ReturnType<typeof getDb>
-
-// Export schema for easy access
+export type Database = any
 export { schema }
