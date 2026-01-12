@@ -1,14 +1,19 @@
 import Link from 'next/link'
 import { formatDate, formatDuration } from '@/lib/utils'
+import { getDb, getD1Database } from '@/lib/db'
+import { shiurim } from '@/lib/schema'
+import { desc } from 'drizzle-orm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Play } from 'lucide-react'
+import { ClientPlayButton } from '@/components/ClientPlayButton'
+import Header from '@/components/Header'
 
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
 
-// Mock data callback for dev
+// Mock data fallback
 const getMockShiurim = () => [
   {
     id: '1',
@@ -40,8 +45,35 @@ const getMockShiurim = () => [
 ]
 
 async function getLatestShiurim() {
-  // Temporarily return mock data to debug server-side crash
-  return getMockShiurim()
+  try {
+    const d1 = await getD1Database()
+
+    if (!d1) {
+      return getMockShiurim()
+    }
+
+    const db = getDb(d1)
+
+    const allShiurim = await db
+      .select()
+      .from(shiurim)
+      .orderBy(desc(shiurim.createdAt))
+      .limit(6)
+      .all()
+
+    if (allShiurim.length === 0) {
+      return getMockShiurim()
+    }
+
+    return allShiurim.map(s => ({
+      ...s,
+      series: 'General',
+      date: s.date || s.createdAt
+    }))
+  } catch (error) {
+    console.error('Error fetching shiurim:', error)
+    return getMockShiurim()
+  }
 }
 
 export default async function Home() {
@@ -49,6 +81,8 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
+
       {/* Hero Section */}
       <section className="relative h-[80vh] min-h-[600px] flex items-center justify-center overflow-hidden">
         {/* Abstract Background */}
@@ -92,12 +126,13 @@ export default async function Home() {
 
               <div className="absolute bottom-0 left-0 right-0 p-8 z-20">
                 <p className="text-primary font-medium mb-2">Latest Episode</p>
-                <h3 className="text-3xl font-serif font-bold text-white mb-2">Faith in Uncertainty</h3>
-                <p className="text-gray-300 text-sm mb-6 line-clamp-2">How to maintain composure when the path ahead is unclear.</p>
-                <Button className="w-full gap-2 font-semibold">
-                  <Play className="h-4 w-4" fill="currentColor" />
-                  Play Episode
-                </Button>
+                <h3 className="text-3xl font-serif font-bold text-white mb-2">
+                  {latestShiurim[0]?.title || 'Faith in Uncertainty'}
+                </h3>
+                <p className="text-gray-300 text-sm mb-6 line-clamp-2">
+                  {latestShiurim[0]?.blurb || 'How to maintain composure when the path ahead is unclear.'}
+                </p>
+                <ClientPlayButton shiur={latestShiurim[0]} />
               </div>
             </Card>
           </div>
@@ -118,35 +153,37 @@ export default async function Home() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {latestShiurim.map((shiur: any) => (
-            <Card key={shiur.id} className="group bg-card/50 border-white/5 hover:border-primary/50 transition-all duration-300 overflow-hidden rounded-xl hover:shadow-2xl hover:shadow-primary/5">
-              <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60 z-10 transition-opacity group-hover:opacity-40" />
-                {/* Placeholder Image */}
-                <div className="absolute inset-0 flex items-center justify-center text-zinc-800">
-                  <div className="text-8xl font-serif opacity-20">K</div>
+            <Link key={shiur.id} href={`/shiur/${shiur.id}`}>
+              <Card className="group bg-card/50 border-white/5 hover:border-primary/50 transition-all duration-300 overflow-hidden rounded-xl hover:shadow-2xl hover:shadow-primary/5">
+                <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60 z-10 transition-opacity group-hover:opacity-40" />
+                  {/* Placeholder Image */}
+                  <div className="absolute inset-0 flex items-center justify-center text-zinc-800">
+                    <div className="text-8xl font-serif opacity-20">K</div>
+                  </div>
+                  <div className="absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+                    <div className="rounded-full h-12 w-12 bg-primary text-primary-foreground flex items-center justify-center shadow-lg">
+                      <Play className="h-5 w-5 ml-1" fill="currentColor" />
+                    </div>
+                  </div>
                 </div>
-                <div className="absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-                  <Button size="icon" className="rounded-full h-12 w-12 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg">
-                    <Play className="h-5 w-5 ml-1" fill="currentColor" />
-                  </Button>
-                </div>
-              </div>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
-                  <span className="uppercase tracking-wider font-medium text-primary/80">{shiur.series}</span>
-                  <span>{formatDuration(shiur.duration || 0)}</span>
-                </div>
-                <h3 className="font-serif text-xl font-bold mb-3 line-clamp-2 leading-tight group-hover:text-primary transition-colors">
-                  {shiur.title}
-                </h3>
-                <p className="text-muted-foreground text-sm line-clamp-2 mb-4 leading-relaxed">
-                  {shiur.blurb || shiur.description}
-                </p>
-                <div className="text-xs text-muted-foreground border-t border-white/5 pt-4">
-                  {formatDate(shiur.date || new Date())}
-                </div>
-              </CardContent>
-            </Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
+                    <span className="uppercase tracking-wider font-medium text-primary/80">{shiur.series}</span>
+                    <span>{formatDuration(shiur.duration || 0)}</span>
+                  </div>
+                  <h3 className="font-serif text-xl font-bold mb-3 line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+                    {shiur.title}
+                  </h3>
+                  <p className="text-muted-foreground text-sm line-clamp-2 mb-4 leading-relaxed">
+                    {shiur.blurb || shiur.description}
+                  </p>
+                  <div className="text-xs text-muted-foreground border-t border-white/5 pt-4">
+                    {formatDate(shiur.date || new Date())}
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       </section>
