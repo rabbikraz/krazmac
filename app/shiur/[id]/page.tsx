@@ -72,7 +72,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 
   // Use custom thumbnail first, then YouTube, then fallback
-  const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube || shiur.link)
+  const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube)
   const thumbnailUrl = shiur.thumbnail || (youtubeVideoId ? getYouTubeThumbnail(youtubeVideoId) : null)
 
   return {
@@ -169,7 +169,7 @@ export default async function ShiurPage({ params }: { params: Promise<{ id: stri
 
         {/* Thumbnail at bottom - auto-pull from YouTube or use manual */}
         {(() => {
-          const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube || shiur.link)
+          const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube)
           const thumbnailUrl = shiur.thumbnail || (youtubeVideoId ? getYouTubeThumbnail(youtubeVideoId) : null)
           if (!thumbnailUrl) return null
           return (
