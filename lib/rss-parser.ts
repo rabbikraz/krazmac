@@ -109,7 +109,7 @@ export async function syncRSSFeed(d1: D1Database, feedUrl: string) {
   const items = await fetchRSSFeed(feedUrl)
   const db = await getDb(d1)
   const synced: string[] = []
-  const errors: string[] = []
+  const errors: { guid: string, message: string }[] = []
 
   for (const item of items) {
     try {
@@ -154,7 +154,8 @@ export async function syncRSSFeed(d1: D1Database, feedUrl: string) {
       }
     } catch (error) {
       console.error(`Error syncing item ${item.guid}:`, error)
-      errors.push(item.guid)
+      const msg = error instanceof Error ? error.message : String(error)
+      errors.push({ guid: item.guid, message: msg })
     }
   }
 

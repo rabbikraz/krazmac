@@ -27,7 +27,7 @@ export default function RefreshRssButton() {
                 throw new Error(errData.error || `Server error: ${res.status}`)
             }
 
-            const data = await res.json() as { synced: number, errors: number }
+            const data = await res.json() as { synced: number, errors: any[] }
             alert(`Synced ${data.synced} new episodes.`)
             router.refresh()
         } catch (error) {

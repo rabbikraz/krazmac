@@ -33,6 +33,9 @@ export default async function DebugRssPage() {
         if (d1) {
             const result = await syncRSSFeed(d1, feedUrl)
             steps.push(`Sync Result: Synced ${result.synced.length}, Errors ${result.errors.length}`)
+            if (result.errors.length > 0) {
+                steps.push(`First Error: ${result.errors[0].message}`)
+            }
         } else {
             steps.push('Skipping DB sync (D1 not found)')
         }
