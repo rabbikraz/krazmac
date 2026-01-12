@@ -49,6 +49,13 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
     const { shiurim } = await import('@/lib/schema')
     const { desc } = await import('drizzle-orm')
 
+    // STEP 1 TEST: Do not execute DB logic yet. Just return mock data.
+    // If this works (200 OK), then the imports are safe, and the crash is in getD1Database() or query.
+    // If this fails (500 Error), then the IMPORTS themselves are killing the worker.
+
+    return { shiurim: getMockShiurim(), error: 'Debug Mode: Imports successful, skipping DB execution' }
+
+    /*
     const d1 = await getD1Database()
 
     if (!d1) {
@@ -63,6 +70,7 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
       .orderBy(desc(shiurim.createdAt))
       .limit(6)
       .all()
+    */
 
     if (allShiurim.length === 0) {
       return { shiurim: getMockShiurim(), error: 'Database is empty (falling back to mock data)' }
