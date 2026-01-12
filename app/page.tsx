@@ -126,7 +126,7 @@ export default async function Home() {
                   <div className="text-8xl font-serif opacity-20">K</div>
                 </div>
                 <div className="absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-                  <Button size="icon" className="rounded-full h-12 w-12 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg" onClick={() => { }}>
+                  <Button size="icon" className="rounded-full h-12 w-12 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg">
                     <Play className="h-5 w-5 ml-1" fill="currentColor" />
                   </Button>
                 </div>
