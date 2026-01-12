@@ -87,11 +87,8 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
 }
 
 export default async function Home() {
-  // DEBUG: Force mock data to isolate DB crash
-  // const { shiurim: latestShiurim, error } = await getLatestShiurim()
-  const latestShiurim = getMockShiurim()
-  const error = undefined;
-  console.log("Using forced mock data for debugging")
+  // Use real data now that DB is verified
+  const { shiurim: latestShiurim, error } = await getLatestShiurim()
 
   return (
     <div className="min-h-screen bg-background">

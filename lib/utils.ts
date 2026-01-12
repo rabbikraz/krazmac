@@ -11,10 +11,37 @@ export function formatDate(date: Date | string | number): string {
   return format(d, 'MMM d, yyyy')
 }
 
-export function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.floor(seconds % 60)
-  return `${minutes}m ${remainingSeconds}s`
+export function formatDuration(seconds: number | string | null | undefined): string {
+  if (!seconds) return '0m'
+
+  // Handle "HH:MM:SS" or "MM:SS" string from DB
+  if (typeof seconds === 'string') {
+    if (seconds.includes(':')) {
+      const parts = seconds.split(':').map(Number)
+      if (parts.length === 3) {
+        return `${parts[0]}h ${parts[1]}m`
+      } else if (parts.length === 2) {
+        return `${parts[0]}m ${parts[1]}s`
+      }
+    }
+    // Try parsing as simple number string
+    const num = parseFloat(seconds)
+    if (!isNaN(num)) seconds = num
+    else return seconds // Return original string if parse fails (fallback)
+  }
+
+  if (typeof seconds === 'number') {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+    const remainingSeconds = Math.floor(seconds % 60)
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`
+    }
+    return `${minutes}m ${remainingSeconds}s`
+  }
+
+  return '0m'
 }
 
 export function getShiurUrl(shiur: any): string {
