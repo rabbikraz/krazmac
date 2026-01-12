@@ -3,20 +3,20 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { usePathname } from 'next/navigation'
-import { Menu, Search } from 'lucide-react'
+import { useState } from 'react'
+import { Menu, X, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 
 const navigation = [
   { name: 'Home', href: '/' },
-  { name: 'Series', href: '/series' },
-  { name: 'Latest', href: '/latest' },
-  { name: 'About', href: '/about' },
+  { name: 'Archive', href: '/archive' },
+  { name: 'Playlists', href: '/playlists' },
   { name: 'Sponsor', href: '/sponsor' },
 ]
 
 export default function Header() {
   const pathname = usePathname()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-background/80 backdrop-blur-md">
@@ -50,30 +50,38 @@ export default function Header() {
             Subscribe
           </Button>
 
-          {/* Mobile Menu */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="bg-background border-l border-border">
-              <nav className="flex flex-col gap-4 mt-8">
-                {navigation.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="text-lg font-medium hover:text-primary"
-                  >
-                    {item.name}
-                  </Link>
-                ))}
-              </nav>
-            </SheetContent>
-          </Sheet>
+          {/* Mobile Menu Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
         </div>
       </div>
+
+      {/* Mobile Menu Dropdown */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-background border-t border-white/10">
+          <nav className="flex flex-col p-4 space-y-3">
+            {navigation.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "text-lg font-medium py-2 transition-colors hover:text-primary",
+                  pathname === item.href ? "text-primary" : "text-foreground"
+                )}
+              >
+                {item.name}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      )}
     </header>
   )
 }
-

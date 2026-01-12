@@ -80,7 +80,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* <Header /> */}
+      <Header />
       {/* Featured / Hero Section */}
       <section className="relative h-[80vh] min-h-[600px] flex items-center justify-center overflow-hidden">
         {/* Abstract Background */}
