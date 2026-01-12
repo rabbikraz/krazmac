@@ -45,35 +45,8 @@ const getMockShiurim = () => [
 ]
 
 async function getLatestShiurim() {
-  try {
-    const d1 = await getD1Database()
-
-    if (!d1) {
-      return getMockShiurim()
-    }
-
-    const db = getDb(d1)
-
-    const allShiurim = await db
-      .select()
-      .from(shiurim)
-      .orderBy(desc(shiurim.createdAt))
-      .limit(6)
-      .all()
-
-    if (allShiurim.length === 0) {
-      return getMockShiurim()
-    }
-
-    return allShiurim.map(s => ({
-      ...s,
-      series: 'General',
-      date: s.date || s.createdAt
-    }))
-  } catch (error) {
-    console.error('Error fetching shiurim:', error)
-    return getMockShiurim()
-  }
+  // Use mock data while debugging
+  return getMockShiurim()
 }
 
 export default async function Home() {
