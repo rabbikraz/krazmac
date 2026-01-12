@@ -1,8 +1,6 @@
 import Link from 'next/link'
 import { formatDate, formatDuration } from '@/lib/utils'
-import { getDb, getD1Database } from '@/lib/db'
-import { shiurim } from '@/lib/schema'
-import { desc } from 'drizzle-orm'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Play } from 'lucide-react'
