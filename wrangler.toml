@@ -1,4 +1,4 @@
-name = "krazywaz"
+name = "krazmac"
 main = ".open-next/worker.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
@@ -16,4 +16,4 @@ binding = "ASSETS"
 
 # Environment variables (set via dashboard or wrangler secret)
 [vars]
-NEXT_PUBLIC_BASE_URL = "https://krazywaz.rabbikraz1.workers.dev"
+NEXT_PUBLIC_BASE_URL = "https://krazmac.rabbikraz1.workers.dev"
