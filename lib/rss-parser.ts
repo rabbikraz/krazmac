@@ -103,7 +103,7 @@ export async function fetchRSSFeed(feedUrl: string): Promise<RSSItem[]> {
  */
 export async function syncRSSFeed(d1: D1Database, feedUrl: string) {
   const items = await fetchRSSFeed(feedUrl)
-  const db = getDb(d1)
+  const db = await getDb(d1)
   const synced: string[] = []
   const errors: string[] = []
 

@@ -4,7 +4,7 @@ import Header from '@/components/Header'
 import PlayButton from '@/components/PlayButton'
 import { Calendar, Clock, Info } from 'lucide-react'
 import { getDb, getD1Database } from '@/lib/db'
-import { shiurim, platformLinks } from '@/lib/schema'
+import { shiurim, platformLinks, type Shiur } from '@/lib/schema'
 import { desc, eq } from 'drizzle-orm'
 
 // Mark as dynamic to avoid build-time database access
@@ -37,7 +37,7 @@ async function getAllShiurim(page: number = 1) {
 
     // Fetch platform links for each shiur
     const shiurimWithLinks = await Promise.all(
-      paginatedShiurim.map(async (shiur) => {
+      paginatedShiurim.map(async (shiur: Shiur) => {
         const links = await db
           .select()
           .from(platformLinks)
@@ -91,7 +91,7 @@ export default async function ArchivePage({
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              {shiurimList.map((shiur: any) => (
+              {shiurimList.map((shiur: Shiur & { platformLinks: any }) => (
                 <div
                   key={shiur.id}
                   className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100 overflow-hidden flex flex-col h-full group"

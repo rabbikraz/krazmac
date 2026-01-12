@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb, getD1Database } from '@/lib/db'
-import { shiurim, platformLinks, users } from '@/lib/schema'
+import { shiurim, platformLinks, users, type Shiur } from '@/lib/schema'
 import { cookies } from 'next/headers'
 import { eq } from 'drizzle-orm'
 import { desc } from 'drizzle-orm'
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch platform links separately
     const shiurimWithLinks = await Promise.all(
-      allShiurim.map(async (shiur) => {
+      allShiurim.map(async (shiur: Shiur) => {
         const links = await db
           .select()
           .from(platformLinks)

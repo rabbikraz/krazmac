@@ -37,7 +37,7 @@ export async function verifyUser(
   email: string,
   password: string
 ) {
-  const db = getDb(d1)
+  const db = await getDb(d1)
 
   const user = await db
     .select()
@@ -75,7 +75,7 @@ export async function createUser(
   password: string,
   name?: string
 ) {
-  const db = getDb(d1)
+  const db = await getDb(d1)
 
   const hashedPassword = await hashPassword(password)
 
