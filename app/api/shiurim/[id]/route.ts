@@ -180,7 +180,6 @@ export async function PUT(
             spotify: currentLinks.spotify,
             apple: currentLinks.apple,
             createdAt: currentLinks.createdAt,
-            updatedAt: new Date(),
           }).execute()
         }
 
@@ -216,7 +215,6 @@ export async function PUT(
           .update(platformLinks)
           .set({
             ...data.platformLinks,
-            updatedAt: new Date(),
           })
           .where(eq(platformLinks.shiurId, targetId))
           .execute()
