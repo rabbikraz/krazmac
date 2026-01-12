@@ -72,6 +72,7 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
       .all()
     */
 
+    /*
     if (allShiurim.length === 0) {
       return { shiurim: getMockShiurim(), error: 'Database is empty (falling back to mock data)' }
     }
@@ -83,6 +84,7 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
     }))
 
     return { shiurim: mappedShiurim }
+    */
   } catch (error: any) {
     console.error('Error fetching shiurim:', error)
     return {
