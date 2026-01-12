@@ -70,7 +70,7 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
       return { shiurim: getMockShiurim(), error: 'Database is empty (falling back to mock data)' }
     }
 
-    const mappedShiurim = allShiurim.map(s => ({
+    const mappedShiurim = allShiurim.map((s: any) => ({
       ...s,
       series: 'General',
       date: s.date || s.createdAt
