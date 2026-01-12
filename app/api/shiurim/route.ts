@@ -10,7 +10,7 @@ async function isAuthenticated(d1: D1Database) {
   const session = cookieStore.get('admin-session')
   if (!session) return false
 
-  const db = getDb(d1)
+  const db = await getDb(d1)
   const user = await db
     .select()
     .from(users)
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
 
     // Fetch all shiurim with their platform links
     const allShiurim = await db
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     }
     const data = body
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
 
     // Create the shiur
     const newShiur = await db

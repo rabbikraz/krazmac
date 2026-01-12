@@ -9,7 +9,7 @@ async function isAuthenticated(d1: D1Database) {
   const session = cookieStore.get('admin-session')
   if (!session) return false
 
-  const db = getDb(d1)
+  const db = await getDb(d1)
   const user = await db
     .select()
     .from(users)
@@ -34,7 +34,7 @@ export async function GET(
       )
     }
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
 
     const shiur = await db
       .select()
@@ -101,7 +101,7 @@ export async function PUT(
     }
     const data = body
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
 
     // Check if we're setting a new slug that should become the ID
     let newId = id
@@ -277,7 +277,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
 
     await db.delete(shiurim).where(eq(shiurim.id, id)).execute()
 
