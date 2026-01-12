@@ -41,7 +41,7 @@ async function getShiur(id: string) {
       .where(eq(platformLinks.shiurId, id))
       .get()
 
-    return {
+    const result = {
       ...shiur,
       date: safeISOString(shiur.date) || new Date().toISOString(),
       createdAt: safeISOString(shiur.createdAt),
@@ -50,8 +50,11 @@ async function getShiur(id: string) {
         ...links,
         createdAt: safeISOString(links.createdAt)
       } : null,
-      shouldRedirect: shiur.slug ? `/${shiur.slug}` : null, // Redirect to slug URL if exists
+      shouldRedirect: shiur.slug ? `/${shiur.slug}` : null,
     }
+
+    // "Nuclear" serialization to ensure absolutely no Date objects or non-serializables leak through
+    return JSON.parse(JSON.stringify(result))
   } catch (error) {
     console.error('Error fetching shiur:', error)
     return null
