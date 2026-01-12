@@ -45,34 +45,8 @@ const getMockShiurim = () => [
 ]
 
 async function getLatestShiurim() {
-  try {
-    const d1 = await getD1Database()
-
-    // In dev environment without D1 locally, fallback to mock
-    if (!d1 && process.env.NODE_ENV !== 'production') {
-      return getMockShiurim()
-    }
-
-    if (!d1) return []
-
-    const db = getDb(d1)
-
-    const allShiurim = await db
-      .select()
-      .from(shiurim)
-      .orderBy(desc(shiurim.createdAt)) // Changed to createdAt as pubDate might be older
-      .limit(6)
-      .all()
-
-    return allShiurim.map(s => ({
-      ...s,
-      series: 'General', // TODO: Fetch actua series
-      date: s.date || s.createdAt // Handle new schema field
-    }))
-  } catch (error) {
-    console.error('Error fetching shiurim:', error)
-    return getMockShiurim()
-  }
+  // Temporarily return mock data to debug server-side crash
+  return getMockShiurim()
 }
 
 export default async function Home() {
