@@ -8,61 +8,64 @@ export const metadata = {
 
 export default function SponsorPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50/50">
+    <div className="min-h-screen flex flex-col bg-background text-foreground">
       <Header />
 
       {/* Hero Section */}
-      <div className="bg-gradient-to-b from-primary/5 to-transparent py-8 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="font-serif text-3xl md:text-4xl font-bold text-gray-900 mb-3">
-            Shiur <span className="text-primary">Sponsorship</span>
+      <div className="relative py-16 px-4 overflow-hidden">
+        <div className="absolute inset-0 bg-primary/5">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/10 via-background to-background"></div>
+        </div>
+        <div className="relative max-w-4xl mx-auto text-center z-10">
+          <h1 className="font-serif text-4xl md:text-5xl font-bold mb-4 tracking-tight">
+            Partner in <span className="text-primary italic">Torah</span>
           </h1>
-          <p className="text-gray-600 text-lg max-w-xl mx-auto">
-            Dedicate a lesson and support the continued spread of Torah wisdom.
+          <p className="text-muted-foreground text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+            Dedicate a lesson and support the continued spread of timeless wisdom.
+            Your partnership powers our mission.
           </p>
         </div>
       </div>
 
-      <main className="flex-1 w-full max-w-6xl mx-auto px-4 pb-12">
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 pb-20">
+        <div className="grid lg:grid-cols-12 gap-10 items-start">
           {/* Main Form */}
-          <div className="lg:col-span-7">
+          <div className="lg:col-span-8">
             <SponsorshipForm />
           </div>
 
           {/* Sidebar - Past Sponsors */}
-          <aside className="hidden lg:block lg:col-span-5 sticky top-8">
+          <aside className="hidden lg:block lg:col-span-4 sticky top-24 space-y-8">
             <PastSponsors />
 
             {/* Additional Info Card */}
-            <div className="mt-6 bg-white rounded-2xl shadow-sm border p-6">
-              <h4 className="font-bold text-gray-900 mb-3">💡 About Sponsorships</h4>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold">•</span>
-                  <span>Your dedication will be announced at the beginning of the shiur</span>
+            <div className="bg-card rounded-xl border border-white/10 p-6 shadow-xl">
+              <h4 className="font-serif font-bold text-lg mb-4 text-primary">Why Sponsor?</h4>
+              <ul className="space-y-4 text-sm text-muted-foreground">
+                <li className="flex items-start gap-3">
+                  <span className="text-primary mt-1">•</span>
+                  <span>Your dedication is announced at the beginning of the shiur, reaching thousands of listeners.</span>
                 </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold">•</span>
-                  <span>Sponsors are listed on the shiur page on our website</span>
+                <li className="flex items-start gap-3">
+                  <span className="text-primary mt-1">•</span>
+                  <span>Listing on our website and email newsletters as a Partner in Torah.</span>
                 </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold">•</span>
-                  <span>Tax-deductible receipts provided automatically</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-primary font-bold">•</span>
-                  <span>Contact <a href="mailto:rabbikraz1@gmail.com" className="text-primary hover:underline">rabbikraz1@gmail.com</a> for questions</span>
+                <li className="flex items-start gap-3">
+                  <span className="text-primary mt-1">•</span>
+                  <span>Receive a tax-deductible receipt automatically via email.</span>
                 </li>
               </ul>
+              <div className="mt-6 pt-6 border-t border-white/5">
+                <p className="text-xs text-muted-foreground">Questions? Email us at <a href="mailto:rabbikraz1@gmail.com" className="text-primary hover:underline">rabbikraz1@gmail.com</a></p>
+              </div>
             </div>
           </aside>
         </div>
       </main>
 
-      <footer className="text-center py-8 border-t">
-        <p className="text-sm text-gray-400">
-          © {new Date().getFullYear()} Rabbi Kraz. Secure payments by Stripe.
+      <footer className="text-center py-8 border-t border-white/10 bg-card/30">
+        <p className="text-sm text-muted-foreground">
+          © {new Date().getFullYear()} Rabbi Kraz. Secure payments processed by Stripe.
         </p>
       </footer>
     </div>

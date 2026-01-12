@@ -12,6 +12,7 @@ const navigation = [
   { name: 'Series', href: '/series' },
   { name: 'Latest', href: '/latest' },
   { name: 'About', href: '/about' },
+  { name: 'Sponsor', href: '/sponsor' },
 ]
 
 export default function Header() {
