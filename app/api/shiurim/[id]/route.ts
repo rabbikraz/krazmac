@@ -210,11 +210,19 @@ export async function PUT(
         .where(eq(platformLinks.shiurId, targetId))
         .get()
 
+      const safeLinks = {
+        youtube: data.platformLinks.youtube,
+        spotify: data.platformLinks.spotify,
+        apple: data.platformLinks.apple,
+        // youtubeMusic, amazon, etc are not in schema
+      }
+
       if (existingLinks) {
         await db
           .update(platformLinks)
           .set({
-            ...data.platformLinks,
+            ...safeLinks,
+            // No updated_at in schema
           })
           .where(eq(platformLinks.shiurId, targetId))
           .execute()
@@ -223,7 +231,7 @@ export async function PUT(
           .insert(platformLinks)
           .values({
             shiurId: targetId,
-            ...data.platformLinks,
+            ...safeLinks,
           })
           .execute()
       }
