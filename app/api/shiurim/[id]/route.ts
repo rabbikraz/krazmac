@@ -117,11 +117,11 @@ export async function PUT(
     if (data.description !== undefined) updateData.description = data.description
     if (data.blurb !== undefined) updateData.blurb = data.blurb
     if (data.audioUrl !== undefined) updateData.audioUrl = data.audioUrl
-    if (data.sourceDoc !== undefined) updateData.sourceDoc = data.sourceDoc
-    if (data.sourcesJson !== undefined) updateData.sourcesJson = data.sourcesJson
-    if (data.pubDate !== undefined) updateData.pubDate = new Date(data.pubDate)
+    if (data.sourceDoc !== undefined) updateData.pdfUrl = data.sourceDoc
+    if (data.sourcesJson !== undefined) updateData.sourceContent = data.sourcesJson
+    if (data.pubDate !== undefined) updateData.date = new Date(data.pubDate)
     if (data.duration !== undefined) updateData.duration = data.duration
-    if (data.link !== undefined) updateData.link = data.link
+    // link removed as it's not in schema
     if (data.thumbnail !== undefined) updateData.thumbnail = data.thumbnail || null
     updateData.updatedAt = new Date()
 
@@ -162,11 +162,11 @@ export async function PUT(
           description: updateData.description ?? currentShiur.description,
           blurb: updateData.blurb ?? currentShiur.blurb,
           audioUrl: updateData.audioUrl ?? currentShiur.audioUrl,
-          sourceDoc: updateData.sourceDoc ?? currentShiur.sourceDoc,
-          sourcesJson: updateData.sourcesJson ?? currentShiur.sourcesJson,
-          pubDate: updateData.pubDate ? new Date(updateData.pubDate) : new Date(currentShiur.pubDate),
+          pdfUrl: updateData.sourceDoc ?? currentShiur.pdfUrl,
+          sourceContent: updateData.sourcesJson ?? currentShiur.sourceContent,
+          date: updateData.pubDate ? new Date(updateData.pubDate) : new Date(currentShiur.date),
           duration: updateData.duration ?? currentShiur.duration,
-          link: updateData.link ?? currentShiur.link,
+          // link is not in schema, assuming it was a mixup with sourceDoc or just unused
           thumbnail: updateData.thumbnail ?? currentShiur.thumbnail,
           createdAt: currentShiur.createdAt,
           updatedAt: new Date(),
@@ -177,13 +177,8 @@ export async function PUT(
           await db.insert(platformLinks).values({
             shiurId: newId,
             youtube: currentLinks.youtube,
-            youtubeMusic: currentLinks.youtubeMusic,
             spotify: currentLinks.spotify,
             apple: currentLinks.apple,
-            amazon: currentLinks.amazon,
-            pocket: currentLinks.pocket,
-            twentyFourSix: currentLinks.twentyFourSix,
-            castbox: currentLinks.castbox,
             createdAt: currentLinks.createdAt,
             updatedAt: new Date(),
           }).execute()
