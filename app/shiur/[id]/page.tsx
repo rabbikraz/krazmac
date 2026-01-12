@@ -150,10 +150,10 @@ export default async function ShiurPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Source Sheet - Main Focus */}
-        {(shiur.sourceDoc || shiur.sourcesJson) && (
+        {(shiur.pdfUrl || shiur.sourceContent) && (
           <SourceSheetViewer
-            sourceDoc={shiur.sourceDoc}
-            sourcesJson={shiur.sourcesJson}
+            sourceDoc={shiur.pdfUrl}
+            sourcesJson={shiur.sourceContent}
             title={shiur.title}
           />
         )}

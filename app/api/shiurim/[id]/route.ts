@@ -162,9 +162,9 @@ export async function PUT(
           description: updateData.description ?? currentShiur.description,
           blurb: updateData.blurb ?? currentShiur.blurb,
           audioUrl: updateData.audioUrl ?? currentShiur.audioUrl,
-          pdfUrl: updateData.sourceDoc ?? currentShiur.pdfUrl,
-          sourceContent: updateData.sourcesJson ?? currentShiur.sourceContent,
-          date: updateData.pubDate ? new Date(updateData.pubDate) : new Date(currentShiur.date),
+          pdfUrl: updateData.pdfUrl ?? currentShiur.pdfUrl,
+          sourceContent: updateData.sourceContent ?? currentShiur.sourceContent,
+          date: updateData.date ?? currentShiur.date,
           duration: updateData.duration ?? currentShiur.duration,
           // link is not in schema, assuming it was a mixup with sourceDoc or just unused
           thumbnail: updateData.thumbnail ?? currentShiur.thumbnail,

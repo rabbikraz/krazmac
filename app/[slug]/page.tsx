@@ -148,8 +148,8 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                 )}
 
                 {/* Source Sheet */}
-                {(shiur.sourceDoc || shiur.sourcesJson) && (
-                    <SourceSheetViewer sourceDoc={shiur.sourceDoc} sourcesJson={shiur.sourcesJson} title={shiur.title} />
+                {(shiur.pdfUrl || shiur.sourceContent) && (
+                    <SourceSheetViewer sourceDoc={shiur.pdfUrl} sourcesJson={shiur.sourceContent} title={shiur.title} />
                 )}
 
                 {/* Thumbnail at bottom - auto-pull from YouTube or use manual */}

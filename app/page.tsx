@@ -18,7 +18,7 @@ const getMockShiurim = () => [
     id: '1',
     title: 'Parshas Vayigash: The Power of Tears',
     series: 'Parsha Hashavua',
-    pubDate: new Date(),
+    date: new Date(),
     duration: 1800,
     blurb: 'Why did Yosef cry on Binyamin\'s neck? A deep dive into the emotional reunion.',
     audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
@@ -27,7 +27,7 @@ const getMockShiurim = () => [
     id: '2',
     title: 'Faith in Times of Uncertainty',
     series: 'Bitachon',
-    pubDate: new Date(Date.now() - 86400000),
+    date: new Date(Date.now() - 86400000),
     duration: 2400,
     blurb: 'Strengthening our emunah when things don\'t go as planned.',
     audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
@@ -36,7 +36,7 @@ const getMockShiurim = () => [
     id: '3',
     title: 'Chanukah: Converting Darkness to Light',
     series: 'Chanukah',
-    pubDate: new Date(Date.now() - 86400000 * 3),
+    date: new Date(Date.now() - 86400000 * 3),
     duration: 3200,
     blurb: 'The unique avail of Chanukah is not just removing darkness, but using it.',
     audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
@@ -170,7 +170,7 @@ export default async function Home() {
                   {shiur.blurb || shiur.description}
                 </p>
                 <div className="text-xs text-muted-foreground border-t border-white/5 pt-4">
-                  {formatDate(shiur.pubDate || shiur.date || new Date())}
+                  {formatDate(shiur.date || new Date())}
                 </div>
               </CardContent>
             </Card>
