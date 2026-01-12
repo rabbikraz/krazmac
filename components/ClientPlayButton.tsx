@@ -9,11 +9,11 @@ export function ClientPlayButton({ shiur }: { shiur: any }) {
 
     return (
         <Button
-            className="w-full gap-2 font-semibold"
+            className="w-full gap-2 font-semibold bg-white text-black hover:bg-gray-200"
             onClick={() => play(shiur)}
         >
             <Play className="h-4 w-4" fill="currentColor" />
-            Play Now
+            Play Episode
         </Button>
     )
 }
