@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { formatDate, formatDuration, extractYouTubeVideoId, getYouTubeThumbnail } from '@/lib/utils'
+import { formatDate, formatDuration, extractYouTubeVideoId, getYouTubeThumbnail, safeISOString } from '@/lib/utils'
 import PlatformLinks from '@/components/PlatformLinks'
 import SourceSheetViewer from '@/components/SourceSheetViewer'
 import StickyAudioPlayer from '@/components/StickyAudioPlayer'
@@ -43,6 +43,9 @@ async function getShiur(id: string) {
 
     return {
       ...shiur,
+      date: safeISOString(shiur.date) || new Date().toISOString(),
+      createdAt: safeISOString(shiur.createdAt),
+      updatedAt: safeISOString(shiur.updatedAt),
       platformLinks: links || null,
       shouldRedirect: shiur.slug ? `/${shiur.slug}` : null, // Redirect to slug URL if exists
     }

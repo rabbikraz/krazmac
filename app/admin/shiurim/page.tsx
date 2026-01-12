@@ -9,6 +9,10 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { Plus, Pencil, Trash2, ExternalLink } from "lucide-react"
+import { getDb, getD1Database } from "@/lib/db"
+import { shiurim as shiurimSchema } from "@/lib/schema"
+import { desc } from "drizzle-orm"
+import { safeISOString, formatDate } from "@/lib/utils"
 
 // Mock data until DB connection is verified locally
 const mockShiurim = [
@@ -18,11 +22,23 @@ const mockShiurim = [
 ]
 
 export default async function ShiurimPage() {
-    // In real implementation:
-    // const db = await getDb(await getD1Database())
-    // const shiurim = await db.select().from(schema.shiurim)...
+    let shiurim = []
+    try {
+        const d1 = await getD1Database()
+        if (d1) {
+            const db = await getDb(d1)
+            const rawShiurim = await db.select().from(shiurimSchema).orderBy(desc(shiurimSchema.date)).all()
 
-    const shiurim = mockShiurim
+            shiurim = rawShiurim.map((s: any) => ({
+                ...s,
+                date: safeISOString(s.date) || new Date().toISOString(),
+                createdAt: safeISOString(s.createdAt),
+                updatedAt: safeISOString(s.updatedAt)
+            }))
+        }
+    } catch (e) {
+        console.error("Failed to fetch shiurim for admin:", e)
+    }
 
     return (
         <div className="space-y-6">
@@ -48,11 +64,11 @@ export default async function ShiurimPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {shiurim.map((shiur) => (
+                        {shiurim.map((shiur: any) => (
                             <TableRow key={shiur.id}>
                                 <TableCell className="font-medium">{shiur.title}</TableCell>
                                 <TableCell>{shiur.series}</TableCell>
-                                <TableCell>{shiur.date}</TableCell>
+                                <TableCell>{formatDate(shiur.date)}</TableCell>
                                 <TableCell>{shiur.views}</TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-2">
