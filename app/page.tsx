@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { formatDate, formatDuration } from '@/lib/utils'
+import { getDb, getD1Database } from '@/lib/db'
+import { shiurim } from '@/lib/schema'
+import { desc } from 'drizzle-orm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Play } from 'lucide-react'
@@ -42,8 +45,35 @@ const getMockShiurim = () => [
 ]
 
 async function getLatestShiurim() {
-  // Use mock data while debugging
-  return getMockShiurim()
+  try {
+    const d1 = await getD1Database()
+
+    if (!d1) {
+      return getMockShiurim()
+    }
+
+    const db = getDb(d1)
+
+    const allShiurim = await db
+      .select()
+      .from(shiurim)
+      .orderBy(desc(shiurim.createdAt))
+      .limit(6)
+      .all()
+
+    if (allShiurim.length === 0) {
+      return getMockShiurim()
+    }
+
+    return allShiurim.map(s => ({
+      ...s,
+      series: 'General',
+      date: s.date || s.createdAt
+    }))
+  } catch (error) {
+    console.error('Error fetching shiurim:', error)
+    return getMockShiurim()
+  }
 }
 
 export default async function Home() {
