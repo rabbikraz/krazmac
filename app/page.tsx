@@ -43,8 +43,18 @@ const getMockShiurim = () => [
 ]
 
 async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
-  // Using mock data for now - database imports are causing crashes
-  return { shiurim: getMockShiurim() }
+  try {
+    // TEST: Can we import drizzle-orm/d1 dynamically without crashing?
+    // lib/db.ts currently does NOT import it at top level.
+    console.log('Attempting dynamic import of drizzle-orm/d1...')
+    const drizzleModule = await import('drizzle-orm/d1')
+    console.log('Dynamic import successful:', !!drizzleModule)
+
+    return { shiurim: getMockShiurim(), error: 'Debug: Import successful! We can proceed with Async DB.' }
+  } catch (e: any) {
+    console.error('Dynamic import failed:', e)
+    return { shiurim: getMockShiurim(), error: `Debug: Import Failed: ${e.message}` }
+  }
 }
 
 export default async function Home() {
