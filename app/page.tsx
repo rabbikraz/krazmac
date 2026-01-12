@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Play } from 'lucide-react'
 import Header from '@/components/Header'
+import { ClientPlayButton } from '@/components/ClientPlayButton'
 
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
@@ -101,10 +102,7 @@ export default async function Home() {
                 <p className="text-gray-300 text-sm mb-6 line-clamp-2">
                   {latestShiurim[0]?.blurb || 'How to maintain composure when the path ahead is unclear.'}
                 </p>
-                <Button className="w-full gap-2 font-semibold bg-primary text-primary-foreground">
-                  <Play className="h-4 w-4" fill="currentColor" />
-                  Play Episode
-                </Button>
+                <ClientPlayButton shiur={latestShiurim[0]} />
               </div>
             </Card>
           </div>

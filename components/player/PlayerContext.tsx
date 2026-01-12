@@ -50,7 +50,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 export function usePlayer() {
     const context = useContext(PlayerContext)
     if (context === undefined) {
-        throw new Error('usePlayer must be used within a PlayerProvider')
+        // Return safe defaults for SSR
+        return {
+            currentShiur: null,
+            isPlaying: false,
+            play: () => { },
+            pause: () => { },
+            toggle: () => { },
+            resume: () => { }
+        }
     }
     return context
 }
