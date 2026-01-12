@@ -219,7 +219,7 @@ export default function SourceSheetViewer({ sourceDoc, sourcesJson, title }: Sou
 
                                         {/* Expandable Content */}
                                         {isExpanded && source.image && (
-                                            <div className="px-5 pb-6 pt-0 ml-10 border-l-2 border-slate-100 mb-4">
+                                            <div className="px-5 pb-6 pt-0 ml-10 mb-4">
                                                 <div
                                                     className="relative rounded-lg overflow-hidden shadow-sm border border-slate-200 w-full md:w-[var(--desktop-width)] group/image cursor-zoom-in"
                                                     style={{ '--desktop-width': `${displayWidth}%` } as React.CSSProperties}
