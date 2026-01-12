@@ -73,7 +73,9 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
     const mappedShiurim = allShiurim.map((s: any) => ({
       ...s,
       series: 'General',
-      date: s.date || s.createdAt
+      date: s.date ? new Date(s.date).toISOString() : (s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString()),
+      createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : null,
+      updatedAt: s.updatedAt ? new Date(s.updatedAt).toISOString() : null,
     }))
 
     return { shiurim: mappedShiurim }

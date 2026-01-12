@@ -46,6 +46,9 @@ async function getAllShiurim(page: number = 1) {
 
         return {
           ...shiur,
+          date: shiur.date ? new Date(shiur.date).toISOString() : new Date().toISOString(),
+          createdAt: shiur.createdAt ? new Date(shiur.createdAt).toISOString() : null,
+          updatedAt: shiur.updatedAt ? new Date(shiur.updatedAt).toISOString() : null,
           platformLinks: links || null,
         }
       })
