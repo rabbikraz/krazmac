@@ -1,11 +1,13 @@
 export const dynamic = 'force-dynamic'
 
+import { sql } from 'drizzle-orm'
+import { shiurim } from '@/lib/schema'
+
 export default async function DebugDbPage() {
     const steps: string[] = []
     try {
         steps.push('Starting...')
         const { getD1Database, getDb } = await import('@/lib/db')
-        const { shiurim } = await import('@/lib/schema')
 
         steps.push('Imported lib/db')
         const d1 = await getD1Database()
@@ -21,6 +23,23 @@ export default async function DebugDbPage() {
 
         const result = await db.select().from(shiurim).limit(1).all()
         steps.push(`Query successful. Rows: ${result.length}`)
+
+        // Test 4: Check if 'date' column exists and add it if missing (Schema Repair)
+        steps.push('Checking schema integrity...')
+        try {
+            // Create a canary query causing the error if column missing
+            await db.select({ date: shiurim.date }).from(shiurim).limit(1).all()
+            steps.push('Schema check: OK ("date" column exists)')
+        } catch (e: any) {
+            if (e.message?.includes('no such column: date')) {
+                steps.push('Schema check: FAILED. Attempting repair...')
+                // Run raw SQL to fix schema
+                await db.run(sql`ALTER TABLE shiurim ADD COLUMN date INTEGER;`)
+                steps.push('Schema repair: APPLIED "ALTER TABLE shiurim ADD COLUMN date INTEGER"')
+            } else {
+                throw e
+            }
+        }
 
         return (
             <div className="p-8 font-mono">
