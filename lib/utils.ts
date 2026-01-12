@@ -1,51 +1,22 @@
-import { type ClassValue, clsx } from "clsx"
+import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { format, formatDistanceToNow } from "date-fns"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDuration(duration: string | undefined): string {
-  if (!duration) return "00:00"
-  return duration
+export function formatDate(date: Date | string | number): string {
+  const d = new Date(date)
+  return format(d, 'MMM d, yyyy')
 }
 
-export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(d)
+export function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.floor(seconds % 60)
+  return `${minutes}m ${remainingSeconds}s`
 }
 
-export function extractYouTubeVideoId(url: string | null | undefined): string | null {
-  if (!url) return null
-
-  // Match various YouTube URL formats
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /youtube\.com\/.*[?&]v=([^&\n?#]+)/,
-  ]
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match && match[1]) {
-      return match[1]
-    }
-  }
-
-  return null
-}
-
-export function getYouTubeThumbnail(videoId: string | null): string | null {
-  if (!videoId) return null
-  // Use maxresdefault for best quality, fallback to hqdefault
-  return `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
-}
-
-export function getShiurUrl(shiur: { id: string, slug: string | null }): string {
-  if (shiur.slug) return `/${shiur.slug}`
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(shiur.id)
-  return isUuid ? `/shiur/${shiur.id}` : `/${shiur.id}`
+export function getShiurUrl(shiur: any): string {
+  return `/shiur/${shiur.slug || shiur.id}`
 }

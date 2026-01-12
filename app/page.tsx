@@ -1,56 +1,76 @@
 import Link from 'next/link'
-import { formatDate, formatDuration, getShiurUrl } from '@/lib/utils'
-import Header from '@/components/Header'
-import PlayButton from '@/components/PlayButton'
-import PlatformGrid from '@/components/PlatformGrid'
-import { Calendar, Clock, Info } from 'lucide-react'
+import { formatDate, formatDuration } from '@/lib/utils'
 import { getDb, getD1Database } from '@/lib/db'
 import { shiurim, platformLinks } from '@/lib/schema'
 import { desc, eq } from 'drizzle-orm'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
+import { Play } from 'lucide-react'
+import { ClientPlayButton } from '@/components/ClientPlayButton'
 
 // Mark as dynamic to avoid build-time database access
 export const dynamic = 'force-dynamic'
-export const revalidate = 60 // Revalidate every 60 seconds
+export const revalidate = 60
+
+// Mock data callback for dev
+const getMockShiurim = () => [
+  {
+    id: '1',
+    title: 'Parshas Vayigash: The Power of Tears',
+    series: 'Parsha Hashavua',
+    pubDate: new Date(),
+    duration: 1800,
+    blurb: 'Why did Yosef cry on Binyamin\'s neck? A deep dive into the emotional reunion.',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+  },
+  {
+    id: '2',
+    title: 'Faith in Times of Uncertainty',
+    series: 'Bitachon',
+    pubDate: new Date(Date.now() - 86400000),
+    duration: 2400,
+    blurb: 'Strengthening our emunah when things don\'t go as planned.',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
+  },
+  {
+    id: '3',
+    title: 'Chanukah: Converting Darkness to Light',
+    series: 'Chanukah',
+    pubDate: new Date(Date.now() - 86400000 * 3),
+    duration: 3200,
+    blurb: 'The unique avail of Chanukah is not just removing darkness, but using it.',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
+  }
+]
 
 async function getLatestShiurim() {
   try {
     const d1 = await getD1Database()
 
-    if (!d1) {
-      console.error('D1 database not available')
-      return []
+    // In dev environment without D1 locally, fallback to mock
+    if (!d1 && process.env.NODE_ENV !== 'production') {
+      return getMockShiurim()
     }
+
+    if (!d1) return []
 
     const db = getDb(d1)
 
-    // Fetch latest 9 shiurim directly from database
     const allShiurim = await db
       .select()
       .from(shiurim)
-      .orderBy(desc(shiurim.pubDate))
-      .limit(9)
+      .orderBy(desc(shiurim.createdAt)) // Changed to createdAt as pubDate might be older
+      .limit(6)
       .all()
 
-    // Fetch platform links for each shiur
-    const shiurimWithLinks = await Promise.all(
-      allShiurim.map(async (shiur) => {
-        const links = await db
-          .select()
-          .from(platformLinks)
-          .where(eq(platformLinks.shiurId, shiur.id))
-          .get()
-
-        return {
-          ...shiur,
-          platformLinks: links || null,
-        }
-      })
-    )
-
-    return shiurimWithLinks
+    return allShiurim.map(s => ({
+      ...s,
+      series: 'General', // TODO: Fetch actua series
+      date: s.date || s.createdAt // Handle new schema field
+    }))
   } catch (error) {
     console.error('Error fetching shiurim:', error)
-    return []
+    return getMockShiurim()
   }
 }
 
@@ -58,136 +78,64 @@ export default async function Home() {
   const latestShiurim = await getLatestShiurim()
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50/50">
-      <Header />
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-12">
-        <section className="mb-16">
-          <div className="text-center mb-10">
-            <h2 className="font-serif text-3xl font-semibold text-primary mb-2">
-              Listen Anywhere
-            </h2>
-            <p className="text-muted-foreground">Subscribe on your favorite platform</p>
-          </div>
-          <PlatformGrid />
-        </section>
-
-        <section className="mb-16">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="font-serif text-3xl font-semibold text-primary">
-              Latest Shiurim
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {latestShiurim.map((shiur: any) => (
-              <div
-                key={shiur.id}
-                className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100 overflow-hidden flex flex-col h-full group"
-              >
-                <div className="p-5 flex-1 flex flex-col">
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <h3 className="font-serif text-xl font-semibold text-primary line-clamp-2 group-hover:text-secondary transition-colors">
-                      <Link href={getShiurUrl(shiur)}>{shiur.title}</Link>
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>{formatDate(shiur.pubDate)}</span>
-                    </div>
-                    {shiur.duration && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{formatDuration(shiur.duration)}</span>
-                      </div>
-                    )}
-                  </div>
-                  {shiur.blurb && (
-                    <p className="text-sm text-gray-600 line-clamp-3 mb-4 flex-1">
-                      {shiur.blurb}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between pt-4 mt-auto border-t border-gray-50">
-                    <PlayButton shiur={shiur} />
-                    <Link
-                      className="flex items-center gap-1 text-sm text-secondary hover:text-primary font-medium"
-                      href={getShiurUrl(shiur)}
-                    >
-                      Details <Info className="w-4 h-4" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="max-w-2xl mx-auto text-center bg-white rounded-2xl p-8 shadow-sm border border-gray-100">
-          <h2 className="font-serif text-2xl font-semibold text-primary mb-4">
-            Join the WhatsApp Group
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Get the latest shiur updates, announcements, and live shiur links directly to your phone.
+    <div className="min-h-screen bg-background">
+      {/* Hero Section */}
+      <section className="relative py-20 px-6 md:py-32 md:px-12 bg-primary text-primary-foreground overflow-hidden">
+        <div className="absolute inset-0 bg-[url('/pattern.svg')] opacity-10"></div>
+        <div className="relative max-w-5xl mx-auto text-center space-y-6">
+          <h1 className="text-4xl md:text-6xl font-serif font-bold tracking-tight">
+            Timeless Torah Wisdom
+          </h1>
+          <p className="text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto">
+            Delivered with passion, clarity, and depth. Explore shiurim on Parsha, Bitachon, and more.
           </p>
-          <a
-            href="https://chat.whatsapp.com/BdUZM8mzvXuEpgS9MoGN9W"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-8 py-3 bg-[#25D366] text-white rounded-full font-bold hover:bg-[#128C7E] transition-colors shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-          >
-            <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center text-[#25D366] font-bold text-xs">
-              WA
-            </div>
-            Join Group
-          </a>
-        </section>
-      </main>
-      <footer className="bg-primary text-white py-8 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="opacity-80 mb-4">
-            © {new Date().getFullYear()} Rabbi Kraz's Shiurim. All rights reserved.
-          </p>
-          <div className="flex flex-col md:flex-row items-center justify-center gap-6 text-sm text-blue-200">
-            <div className="flex gap-6">
-              <Link className="hover:text-white transition-colors" href="/">
-                Home
-              </Link>
-              <Link className="hover:text-white transition-colors" href="/playlists">
-                Playlists
-              </Link>
-              <Link className="hover:text-white transition-colors" href="/sponsor">
-                Sponsor
-              </Link>
-              <a className="hover:text-white transition-colors" href="mailto:rabbikraz1@gmail.com">
-                Contact
-              </a>
-            </div>
-            <a
-              href="https://anchor.fm/s/d89491c4/podcast/rss"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 hover:text-white transition-colors"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-4 h-4"
-              >
-                <path d="M4 11a9 9 0 0 1 9 9"></path>
-                <path d="M4 4a16 16 0 0 1 16 16"></path>
-                <circle cx="5" cy="19" r="1"></circle>
-              </svg>
-              RSS Feed
-            </a>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+            <Button size="lg" variant="secondary" className="font-semibold text-lg px-8">
+              Start Listening
+            </Button>
+            <Button size="lg" variant="outline" className="bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary font-semibold text-lg px-8">
+              Browse Series
+            </Button>
           </div>
         </div>
-      </footer>
+      </section>
+
+      {/* Latest Shiurim */}
+      <section className="py-16 px-6 max-w-7xl mx-auto">
+        <h2 className="text-3xl font-bold mb-8 font-serif">Latest Shiurim</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {latestShiurim.map((shiur: any) => (
+            <Card key={shiur.id} className="group hover:shadow-lg transition-shadow border-muted">
+              <CardHeader className="p-0">
+                <div className="h-48 bg-muted w-full relative overflow-hidden rounded-t-lg">
+                  {/* Placeholder for image */}
+                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/50">
+                    <span className="font-serif italic text-2xl opacity-20">Rabbi Kraz</span>
+                  </div>
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="text-sm text-primary font-medium mb-2">{shiur.series}</div>
+                <h3 className="font-serif text-xl font-bold mb-2 line-clamp-2 leading-tight">
+                  {shiur.title}
+                </h3>
+                <p className="text-muted-foreground text-sm line-clamp-2 mb-4">
+                  {shiur.blurb || shiur.description}
+                </p>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>{formatDate(shiur.pubDate || shiur.date || new Date())}</span>
+                  <span>•</span>
+                  <span>{formatDuration(shiur.duration || 0)}</span>
+                </div>
+              </CardContent>
+              <CardFooter className="p-6 pt-0">
+                <ClientPlayButton shiur={shiur} />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
