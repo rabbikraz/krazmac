@@ -26,11 +26,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full dark">
       <head>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
       </head>
-      <body className={`${inter.variable} ${cormorantGaramond.variable} font-sans antialiased h-full flex flex-col`}>
+      <body className={`${inter.variable} ${cormorantGaramond.variable} font-sans antialiased h-full flex flex-col bg-background text-foreground`}>
         <PlayerProvider>
           <div className="flex-1">
             {children}
