@@ -43,8 +43,42 @@ const getMockShiurim = () => [
 ]
 
 async function getLatestShiurim() {
-  // Using mock data for now - database integration to be fixed separately
-  return getMockShiurim()
+  try {
+    // Dynamic import to prevent top-level crashes if DB module fails
+    const { getDb, getD1Database } = await import('@/lib/db')
+    const { shiurim } = await import('@/lib/schema')
+    const { desc } = await import('drizzle-orm')
+
+    const d1 = await getD1Database()
+
+    if (!d1) {
+      console.warn('D1 database not found, falling back to mock data')
+      return getMockShiurim()
+    }
+
+    const db = getDb(d1)
+
+    const allShiurim = await db
+      .select()
+      .from(shiurim)
+      .orderBy(desc(shiurim.createdAt))
+      .limit(6)
+      .all()
+
+    if (allShiurim.length === 0) {
+      return getMockShiurim()
+    }
+
+    return allShiurim.map(s => ({
+      ...s,
+      series: 'General',
+      date: s.date || s.createdAt
+    }))
+  } catch (error) {
+    console.error('Error fetching shiurim:', error)
+    // Fallback to mock data on ANY error
+    return getMockShiurim()
+  }
 }
 
 export default async function Home() {
