@@ -13,7 +13,7 @@ export default async function DebugRssPage() {
         steps.push(`Fetched ${items.length} items`)
 
         if (items.length > 0) {
-            steps.push(`First item: ${items[0].title} (${items[0].date || items[0].pubDate})`)
+            steps.push(`First item: ${items[0].title} (${items[0].pubDate})`)
         }
 
         // Test 2: Try Syncing (Dry Run or Real)
