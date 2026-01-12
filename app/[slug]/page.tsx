@@ -62,7 +62,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     }
 
     const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube || shiur.link)
-    const thumbnailUrl = shiur.thumbnail || getYouTubeThumbnail(youtubeVideoId)
+    const thumbnailUrl = shiur.thumbnail || (youtubeVideoId ? getYouTubeThumbnail(youtubeVideoId) : null)
 
     return {
         title: `${shiur.title} — Rabbi Kraz's Shiurim`,
@@ -155,7 +155,7 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                 {/* Thumbnail at bottom - auto-pull from YouTube or use manual */}
                 {(() => {
                     const youtubeVideoId = extractYouTubeVideoId(shiur.platformLinks?.youtube || shiur.link)
-                    const thumbnailUrl = shiur.thumbnail || getYouTubeThumbnail(youtubeVideoId)
+                    const thumbnailUrl = shiur.thumbnail || (youtubeVideoId ? getYouTubeThumbnail(youtubeVideoId) : null)
                     if (!thumbnailUrl) return null
                     return (
                         <div className="mt-4 md:mt-6 mb-20">
