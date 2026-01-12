@@ -44,16 +44,45 @@ const getMockShiurim = () => [
 
 async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
   try {
-    // TEST: Can we import drizzle-orm/d1 dynamically without crashing?
-    // lib/db.ts currently does NOT import it at top level.
-    console.log('Attempting dynamic import of drizzle-orm/d1...')
-    const drizzleModule = await import('drizzle-orm/d1')
-    console.log('Dynamic import successful:', !!drizzleModule)
+    console.log('Fetching shiurim...')
+    // Dynamic import to prevent top-level crashes if DB module fails
+    const { getDb, getD1Database } = await import('@/lib/db')
+    const { shiurim } = await import('@/lib/schema')
+    const { desc } = await import('drizzle-orm')
 
-    return { shiurim: getMockShiurim(), error: 'Debug: Import successful! We can proceed with Async DB.' }
-  } catch (e: any) {
-    console.error('Dynamic import failed:', e)
-    return { shiurim: getMockShiurim(), error: `Debug: Import Failed: ${e.message}` }
+    const d1 = await getD1Database()
+
+    if (!d1) {
+      return { shiurim: getMockShiurim(), error: 'D1 database not found (falling back to mock data)' }
+    }
+
+    // Await the async DB client (now safe)
+    const db = await getDb(d1)
+
+    const allShiurim = await db
+      .select()
+      .from(shiurim)
+      .orderBy(desc(shiurim.createdAt))
+      .limit(6)
+      .all()
+
+    if (allShiurim.length === 0) {
+      return { shiurim: getMockShiurim(), error: 'Database is empty (falling back to mock data)' }
+    }
+
+    const mappedShiurim = allShiurim.map(s => ({
+      ...s,
+      series: 'General',
+      date: s.date || s.createdAt
+    }))
+
+    return { shiurim: mappedShiurim }
+  } catch (error: any) {
+    console.error('Error fetching shiurim:', error)
+    return {
+      shiurim: getMockShiurim(),
+      error: `DB Error: ${error?.message || String(error)}`
+    }
   }
 }
 
