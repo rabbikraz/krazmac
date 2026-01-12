@@ -22,7 +22,7 @@ async function getShiurBySlug(slug: string) {
             return null
         }
 
-        const db = getDb(d1)
+        const db = await getDb(d1)
 
         const shiur = await db
             .select()
