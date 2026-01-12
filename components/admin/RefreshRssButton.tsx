@@ -23,7 +23,8 @@ export default function RefreshRssButton() {
             })
 
             if (!res.ok) {
-                throw new Error('Failed to sync RSS')
+                const errData = await res.json().catch(() => ({})) as any
+                throw new Error(errData.error || `Server error: ${res.status}`)
             }
 
             const data = await res.json() as { synced: number, errors: number }
@@ -31,7 +32,7 @@ export default function RefreshRssButton() {
             router.refresh()
         } catch (error) {
             console.error(error)
-            alert('Failed to refresh RSS feed')
+            alert(`Failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         } finally {
             setLoading(false)
         }
