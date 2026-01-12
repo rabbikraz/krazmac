@@ -1,12 +1,8 @@
 import Link from 'next/link'
 import { formatDate, formatDuration } from '@/lib/utils'
-import { getDb, getD1Database } from '@/lib/db'
-import { shiurim } from '@/lib/schema'
-import { desc } from 'drizzle-orm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Play } from 'lucide-react'
-import { ClientPlayButton } from '@/components/ClientPlayButton'
 import Header from '@/components/Header'
 
 // Mark as dynamic to avoid build-time database access
@@ -105,7 +101,10 @@ export default async function Home() {
                 <p className="text-gray-300 text-sm mb-6 line-clamp-2">
                   {latestShiurim[0]?.blurb || 'How to maintain composure when the path ahead is unclear.'}
                 </p>
-                <ClientPlayButton shiur={latestShiurim[0]} />
+                <Button className="w-full gap-2 font-semibold bg-primary text-primary-foreground">
+                  <Play className="h-4 w-4" fill="currentColor" />
+                  Play Episode
+                </Button>
               </div>
             </Card>
           </div>
