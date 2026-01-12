@@ -42,7 +42,7 @@ const getMockShiurim = () => [
   }
 ]
 
-async function getLatestShiurim() {
+async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
   try {
     // Dynamic import to prevent top-level crashes if DB module fails
     const { getDb, getD1Database } = await import('@/lib/db')
@@ -52,8 +52,7 @@ async function getLatestShiurim() {
     const d1 = await getD1Database()
 
     if (!d1) {
-      console.warn('D1 database not found, falling back to mock data')
-      return getMockShiurim()
+      return { shiurim: getMockShiurim(), error: 'D1 database not found (falling back to mock data)' }
     }
 
     const db = getDb(d1)
@@ -66,27 +65,40 @@ async function getLatestShiurim() {
       .all()
 
     if (allShiurim.length === 0) {
-      return getMockShiurim()
+      return { shiurim: getMockShiurim(), error: 'Database is empty (falling back to mock data)' }
     }
 
-    return allShiurim.map(s => ({
+    const mappedShiurim = allShiurim.map(s => ({
       ...s,
       series: 'General',
       date: s.date || s.createdAt
     }))
-  } catch (error) {
+
+    return { shiurim: mappedShiurim }
+  } catch (error: any) {
     console.error('Error fetching shiurim:', error)
-    // Fallback to mock data on ANY error
-    return getMockShiurim()
+    return {
+      shiurim: getMockShiurim(),
+      error: `DB Error: ${error?.message || String(error)}`
+    }
   }
 }
 
 export default async function Home() {
-  const latestShiurim = await getLatestShiurim()
+  const { shiurim: latestShiurim, error } = await getLatestShiurim()
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
+
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-destructive/10 border-b border-destructive/20 p-4 text-center">
+          <p className="text-destructive font-mono text-sm">
+            System Alert: {error}
+          </p>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="relative h-[80vh] min-h-[600px] flex items-center justify-center overflow-hidden">
