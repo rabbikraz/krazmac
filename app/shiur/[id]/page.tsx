@@ -46,7 +46,10 @@ async function getShiur(id: string) {
       date: safeISOString(shiur.date) || new Date().toISOString(),
       createdAt: safeISOString(shiur.createdAt),
       updatedAt: safeISOString(shiur.updatedAt),
-      platformLinks: links || null,
+      platformLinks: links ? {
+        ...links,
+        createdAt: safeISOString(links.createdAt)
+      } : null,
       shouldRedirect: shiur.slug ? `/${shiur.slug}` : null, // Redirect to slug URL if exists
     }
   } catch (error) {
