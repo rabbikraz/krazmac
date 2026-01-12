@@ -2,6 +2,20 @@ import { getDb } from './db'
 import { shiurim } from './schema'
 import { eq } from 'drizzle-orm'
 
+/**
+ * Parse duration string (HH:MM:SS or MM:SS) to seconds
+ */
+function parseDuration(duration: string): number {
+  const parts = duration.split(':').map(Number)
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1]
+  }
+  return parseInt(duration, 10) || 0
+}
+
+
 export interface RSSItem {
   guid: string
   title: string
@@ -110,9 +124,8 @@ export async function syncRSSFeed(d1: D1Database, feedUrl: string) {
             title: item.title,
             description: item.description,
             audioUrl: item.audioUrl,
-            pubDate: new Date(item.pubDate),
-            duration: item.duration,
-            link: item.link,
+            date: new Date(item.pubDate),
+            duration: item.duration ? parseDuration(item.duration) : null,
             updatedAt: new Date(),
           })
           .where(eq(shiurim.guid, item.guid))
@@ -128,9 +141,8 @@ export async function syncRSSFeed(d1: D1Database, feedUrl: string) {
             title: item.title,
             description: item.description,
             audioUrl: item.audioUrl,
-            pubDate: new Date(item.pubDate),
-            duration: item.duration,
-            link: item.link,
+            date: new Date(item.pubDate),
+            duration: item.duration ? parseDuration(item.duration) : null,
           })
           .execute()
 
