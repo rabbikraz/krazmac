@@ -22,7 +22,7 @@ async function getAllShiurim(page: number = 1) {
       return { shiurim: [], total: 0, totalPages: 0 }
     }
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
 
     // Get total count
     const allShiurimData = await db
