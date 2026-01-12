@@ -219,7 +219,7 @@ export async function POST(request: NextRequest) {
                             },
                             size: 5
                         }),
-                        signal: AbortSignal.timeout(5000)
+                        signal: AbortSignal.timeout(15000)
                     })
 
                     if (esRes.ok) {
