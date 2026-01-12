@@ -120,7 +120,7 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
                         {shiur.title}
                     </h1>
                     <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs md:text-sm text-muted-foreground">
-                        <span>{formatDate(shiur.pubDate)}</span>
+                        <span>{formatDate(shiur.date)}</span>
                         {shiur.duration && (
                             <>
                                 <span className="w-1 h-1 bg-gray-300 rounded-full"></span>

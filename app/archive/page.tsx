@@ -28,7 +28,7 @@ async function getAllShiurim(page: number = 1) {
     const allShiurimData = await db
       .select()
       .from(shiurim)
-      .orderBy(desc(shiurim.pubDate))
+      .orderBy(desc(shiurim.date))
       .all()
 
     const total = allShiurimData.length
@@ -105,7 +105,7 @@ export default async function ArchivePage({
                     <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        <span>{formatDate(shiur.pubDate)}</span>
+                        <span>{formatDate(shiur.date)}</span>
                       </div>
                       {shiur.duration && (
                         <div className="flex items-center gap-1">

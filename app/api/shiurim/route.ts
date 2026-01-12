@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const allShiurim = await db
       .select()
       .from(shiurim)
-      .orderBy(desc(shiurim.pubDate))
+      .orderBy(desc(shiurim.date))
       .all()
 
     // Fetch platform links separately
@@ -106,10 +106,9 @@ export async function POST(request: NextRequest) {
         description: data.description,
         blurb: data.blurb,
         audioUrl: data.audioUrl,
-        sourceDoc: data.sourceDoc,
-        pubDate: new Date(data.pubDate),
-        duration: data.duration,
-        link: data.link,
+        pdfUrl: data.sourceDoc,
+        date: new Date(data.pubDate),
+        duration: parseInt(data.duration || '0', 10),
       })
       .returning()
       .get()
