@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { fetchRSSFeed, syncRSSFeed } from '@/lib/rss-parser'
-import { getD1Database } from '@/lib/db'
+import { getD1Database, getDb } from '@/lib/db'
+import { sql } from 'drizzle-orm'
 
 export default async function DebugRssPage() {
     const steps: string[] = []
@@ -27,10 +28,35 @@ export default async function DebugRssPage() {
             steps.push(`First item: ${items[0].title} (${items[0].pubDate})`)
         }
 
-        // Test 2: Try Syncing (Dry Run or Real)
-        steps.push('Attempting DB Sync...')
         const d1 = await getD1Database()
+
+        // Test 2: Check Schema before syncing
+        steps.push('Checking DB Schema...')
         if (d1) {
+            // Check actual columns using PRAGMA
+            const db = await getDb(d1)
+            const columns = await db.run(sql`PRAGMA table_info(shiurim)`)
+            const columnNames = (columns.results as any[]).map(c => c.name)
+            steps.push(`Columns found: ${columnNames.join(', ')}`)
+
+            if (!columnNames.includes('date')) {
+                steps.push('CRITICAL: "date" column is MISSING. Attempting Repair...')
+                try {
+                    // Remove NOT NULL constraint for existing rows to avoid issues, or provide default?
+                    // SQLite allows adding column without default if it allows nulls.
+                    // But our schema says NotNull. SQLite ADD COLUMN with NotNull requires default.
+                    // Let's force it to be nullable for now to succeed, or give default 0.
+                    await db.run(sql`ALTER TABLE shiurim ADD COLUMN date INTEGER DEFAULT 0;`)
+                    steps.push('Repair result: Successfully added "date" column with default 0')
+                } catch (err: any) {
+                    steps.push(`Repair FAILED: ${err.message}`)
+                }
+            } else {
+                steps.push('Schema OK: "date" column exists.')
+            }
+
+            // Test 3: Try Syncing
+            steps.push('Attempting DB Sync...')
             const result = await syncRSSFeed(d1, feedUrl)
             steps.push(`Sync Result: Synced ${result.synced.length}, Errors ${result.errors.length}`)
             if (result.errors.length > 0) {
