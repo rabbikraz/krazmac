@@ -10,7 +10,7 @@ async function isAuthenticated(d1: D1Database) {
   const session = cookieStore.get('admin-session')
   if (!session) return false
 
-  const db = getDb(d1)
+  const db = await getDb(d1)
   const user = await db
     .select()
     .from(users)

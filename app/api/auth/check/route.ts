@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ authenticated: false }, { status: 401 })
     }
 
-    const db = getDb(d1)
+    const db = await getDb(d1)
     const user = await db
       .select({
         id: users.id,
