@@ -9,8 +9,19 @@ export default async function DebugRssPage() {
         steps.push(`Fetching feed from: ${feedUrl}`)
 
         // Test 1: Fetch and Parse
+        const { fetchRSSFeed: fetchWithDebug } = await import('@/lib/rss-parser')
+        // We can't easily get the raw text from the helper, but let's try to verify what the helper sees
+        // modifying the helper to export a debug function or just fetch here?
+        // Let's just use the helper, if it returns 0 we suspect the content.
+
+        // Actually, let's fetch raw here to show the user what we see
+        const rawRes = await fetch(feedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+        const rawText = await rawRes.text()
+        steps.push(`Raw response length: ${rawText.length} chars`)
+        steps.push(`Preview: ${rawText.substring(0, 100).replace(/</g, '&lt;')}`)
+
         const items = await fetchRSSFeed(feedUrl)
-        steps.push(`Fetched ${items.length} items`)
+        steps.push(`Parsed ${items.length} items`)
 
         if (items.length > 0) {
             steps.push(`First item: ${items[0].title} (${items[0].pubDate})`)
