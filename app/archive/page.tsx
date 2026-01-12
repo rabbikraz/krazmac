@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { formatDate, formatDuration, getShiurUrl } from '@/lib/utils'
+import { formatDate, formatDuration, getShiurUrl, safeISOString } from '@/lib/utils'
 import Header from '@/components/Header'
 import PlayButton from '@/components/PlayButton'
 import { Calendar, Clock, Info } from 'lucide-react'
@@ -46,9 +46,9 @@ async function getAllShiurim(page: number = 1) {
 
         return {
           ...shiur,
-          date: shiur.date ? new Date(shiur.date).toISOString() : new Date().toISOString(),
-          createdAt: shiur.createdAt ? new Date(shiur.createdAt).toISOString() : null,
-          updatedAt: shiur.updatedAt ? new Date(shiur.updatedAt).toISOString() : null,
+          date: safeISOString(shiur.date) || new Date().toISOString(),
+          createdAt: safeISOString(shiur.createdAt),
+          updatedAt: safeISOString(shiur.updatedAt),
           platformLinks: links || null,
         }
       })

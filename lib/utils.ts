@@ -60,3 +60,18 @@ export function getYouTubeThumbnail(url: string): string {
     ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
     : '/images/placeholder-shiur.jpg'
 }
+
+export function safeISOString(date: any): string | null {
+  if (!date) return null
+  try {
+    const d = new Date(date)
+    if (isNaN(d.getTime())) {
+      console.warn('Invalid date encountered:', date)
+      return null // Or fallback to new Date().toISOString()
+    }
+    return d.toISOString()
+  } catch (e) {
+    console.error('Date parsing error for:', date, e)
+    return null
+  }
+}

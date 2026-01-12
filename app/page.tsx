@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { formatDate, formatDuration } from '@/lib/utils'
+import { formatDate, formatDuration, safeISOString } from '@/lib/utils'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -73,9 +73,9 @@ async function getLatestShiurim(): Promise<{ shiurim: any[], error?: string }> {
     const mappedShiurim = allShiurim.map((s: any) => ({
       ...s,
       series: 'General',
-      date: s.date ? new Date(s.date).toISOString() : (s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString()),
-      createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : null,
-      updatedAt: s.updatedAt ? new Date(s.updatedAt).toISOString() : null,
+      date: safeISOString(s.date) || safeISOString(s.createdAt) || new Date().toISOString(),
+      createdAt: safeISOString(s.createdAt),
+      updatedAt: safeISOString(s.updatedAt),
     }))
 
     return { shiurim: mappedShiurim }
